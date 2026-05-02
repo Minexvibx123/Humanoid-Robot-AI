@@ -44,8 +44,8 @@ AI/
 ├── eval_harness.py       ← 44 Integrations-Testszenarien (MiniWorld)
 ├── post_fix_harness.py   ← Struktureller Ablations-Harness (5 Mechanismen, Minimality)
 ├── integration_probe.py  ← φ-Surrogate + phi_degradation_level() Kaskaden-Messung
-├── _train_consciousness.py ← Headless Vortraining (BeliefStore + STDP-Injektion)
-├── _fix_mojibake.py      ← Einmaliges Encoding-Reparatur-Tool
+├── _test_f5tts.py        ← F5-TTS Standalone-Test (Sprachklonierung, Referenz-WAV)
+├── _test_kokoro.py       ← Kokoro-ONNX Standalone-Test (Offline-Preset-Stimme)
 │
 ├── ── GUI & Konfig ──────────────────────────────────────────────────────
 ├── dpg_monitor.py        ← DearPyGui Dashboard (10+ Panels, GPU-beschleunigt)
@@ -267,7 +267,7 @@ Die Dialogschicht erzeugt vollständige `UtterancePlan`-Objekte mit:
 - `head_nod`, `gaze_at_person`, `jaw_sync` — motorische Cues
 
 Diese werden durchgereicht bis in die Ausgabe:
-- **SpeechOutput**: Backend-spezifische Umsetzung von Prosodie (ElevenLabs: Stability/Style-Modulation; Kokoro: Pitch via Resampling; pyttsx3: Rate-Modulation + Pausen-Emphasis)
+- **SpeechOutput**: Backend-spezifische Umsetzung von Prosodie (F5-TTS: Zero-Shot-Sprachklonierung via Referenz-WAV + Speed-Parameter; Kokoro: Pitch via Resampling; pyttsx3: Rate-Modulation + Pausen-Emphasis)
 - **RobotController**: Motor-Cue-Callbacks (nod_head, gaze_at_person) werden vor der Sprachausgabe ausgelöst
 
 ### Soziale Feedbackschleife
@@ -425,7 +425,6 @@ cd "C:\Users\Minex\AI"
 .\.venv\Scripts\python.exe main.py --headless         # kein GUI, stdout-Status
 .\.venv\Scripts\python.exe main.py --eval             # 44 Eval-Szenarien starten
 .\.venv\Scripts\python.exe main.py --soak             # Langzeit-Soak-Test
-.\.venv\Scripts\python.exe _train_consciousness.py    # Vortraining (Headless)
 ```
 
 ## Befehle im GUI
@@ -480,7 +479,7 @@ python acceptance_eval.py --limits  # nur Grenzen/Hardware/Ethik
 1. **Kamera ≥30fps + Face-Tracking**: Ohne Live-Video kein Blickkontakt, keine Distanzmessung, keine Emotionserkennung.
 2. **Mikrofon mit Richtcharakteristik**: Omnidirektionalmikros verursachen Hintergrundlärm-Fehler → Trust-Erosion durch häufige Reparaturen (ASR-Fehler, nicht kognitive Fehler).
 3. **Physischer Körper** (InMoov / äquivalent): Textuell-Only-Modus kann soziale Kontinuität und Proaktivität nicht demonstrieren.  Gesten, Augenbewegungen, Körpersprache sind essentiell für Personwirkung.
-4. **TTS mit Prosodie-Kontrolle**: Monotone Stimme zerstört Glaubwürdigkeit unabhängig von Textqualität.  Kokoro/F5TTS ist ausreichend, braucht aber Silence-Gating und Nachbearbeitung.
+4. **TTS mit Prosodie-Kontrolle**: Monotone Stimme zerstört Glaubwürdigkeit unabhängig von Textqualität.  F5-TTS (Zero-Shot-Klonierung, offline) + Kokoro-ONNX als Fallback sind ausreichend, benötigen aber Silence-Gating und ggf. Nachbearbeitung.
 5. **GPU für lokale Inferenz**: Für Turn-Taking-Übergaben <400 ms Reaktionszeit wird ein lokales Modell auf GPU benötigt (aktuell cloud-LLM-abhängig).
 
 ### C. Ethische und psychologische Risiken bei höherer Glaubwürdigkeit
@@ -491,7 +490,7 @@ python acceptance_eval.py --limits  # nur Grenzen/Hardware/Ethik
 4. **Datenakkumulation ohne Kontrolle**: `PersonModel` + `GoalStack` speichern dauerhaft Gesprächsverläufe, Interessen, Konflikte.  Es gibt kein "Vergiss mich komplett"-Interface.
 5. **Reparatur-Eskalation als Stressor**: `clarity="high"` + reactive Initiative können als Bevormundung wahrgenommen werden, wenn die Reparaturursache beim System lag (schlechte ASR, unklare LLM-Formulierungen) und nicht beim Nutzer.
 
-### D. Abnahmestatus (Stand Mai 2026)
+### D. Abnahmestatus (Stand Mai 2026 — nach TTS-Migration)
 
 | Kategorie | Status |
 |---|---|
