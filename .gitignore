@@ -1,0 +1,54 @@
+# Secrets — never commit
+.env
+albedo_voice_id.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# venv directories created at project root (if venv was init'd here)
+Include/
+Lib/
+Scripts/
+share/
+
+# Downloaded / generated model files
+models/kokoro/
+models/.cache/
+*.onnx
+*.bin
+*.task
+*.tflite
+*.pt
+*.ckpt
+*.safetensors
+
+# HuggingFace / F5-TTS cache
+.cache/
+
+# Numba cache
+*.nbc
+*.nbi
+
+# Voice / audio assets (large binaries)
+voice_segments/
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.bak
+*.log
+*.jsonl
+
+# Temporary outputs
+probe_out.txt
+harness_result.txt
+_ev_result.txt
