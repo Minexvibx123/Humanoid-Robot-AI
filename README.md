@@ -1,3 +1,5 @@
+> 🇩🇪 Deutsch | [🇬🇧 English](README_EN.md)
+
 # Humanoid Robot AI – Projektübersicht
 
 Dieses Repository ist kein reiner "Neural-Consciousness"-Prototyp mehr, sondern ein tick-getriebenes Humanoid-/Social-Robot-System mit kognitivem Kern, Weltmodell, Dialogplanung, verkörperten Motor-Cues und mehreren Laufmodi.

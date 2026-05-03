@@ -1,3 +1,5 @@
+> [🇩🇪 Deutsch](README.md) | 🇬🇧 English
+
 # Humanoid Robot AI — Project Overview
 
 This repository is a tick-driven humanoid/social-robot system with a cognitive core, world model, dialogue planning, embodied motor cues, and multiple run modes — not just a neural-consciousness prototype.
