@@ -24891,16 +24891,7 @@ class ConsciousnessCore:
                     if _rc_gest is not None:
                         for _gtag in _gest_hits:
                             try:
-                                if _gtag == "nod":
-                                    _rc_gest.nod_head()
-                                elif _gtag == "gaze":
-                                    _rc_gest.gaze_at_person()
-                                elif _gtag in ("wave", "gesture_ready"):
-                                    _rc_gest.apply_action(
-                                        "set_pose",
-                                        {"arms": "gesture_ready", "hands": "open"},
-                                        0,
-                                    )
+                                _rc_gest.apply_action("gesture", {"name": _gtag}, 0)
                             except Exception:
                                 pass
 

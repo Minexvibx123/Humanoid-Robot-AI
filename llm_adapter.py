@@ -682,9 +682,15 @@ def _build_system_prompt(ctx: LLMContext) -> str:
     if lang == "de":
         _gesture_hint = (
             " Körper-Tags (nur auf Aufforderung, sparsam): "
-            "[GESTURE:nod] = Nicken, [GESTURE:wave] = Winken, "
-            "[GESTURE:gesture_ready] = Arme in Bereitschaft, "
-            "[GESTURE:gaze] = Blickkontakt herstellen. Tags werden nicht vorgelesen."
+            "Kopf: [GESTURE:nod] [GESTURE:shake_head] [GESTURE:tilt_thinking] [GESTURE:bow_head] — "
+            "Augen: [GESTURE:wide_eyes] [GESTURE:blink] [GESTURE:wink_right] [GESTURE:sleepy_eyes] — "
+            "Arme (beide): [GESTURE:arms_open] [GESTURE:shrug] [GESTURE:gesture_ready] [GESTURE:arms_welcoming] [GESTURE:embrace_open] [GESTURE:cheering] [GESTURE:arms_celebratory] [GESTURE:hands_up] [GESTURE:arms_defensive] [GESTURE:arms_pleading] [GESTURE:clap_pose] [GESTURE:thumbs_both_up] [GESTURE:namaste] [GESTURE:heart_gesture] [GESTURE:world_gesture] — "
+            "Rechts: [GESTURE:wave] [GESTURE:wave_right_high] [GESTURE:point_right] [GESTURE:thumbs_up_right] [GESTURE:thumbs_down_right] [GESTURE:fist_right] [GESTURE:beckon_right] [GESTURE:stop_right] [GESTURE:salute_formal] [GESTURE:eureka] [GESTURE:ok_right] [GESTURE:peace_right] — "
+            "Links: [GESTURE:wave_left] [GESTURE:point_left] [GESTURE:reach_left] — "
+            "Begrüßung/Abschied: [GESTURE:hello] [GESTURE:goodbye] [GESTURE:bow_greeting] [GESTURE:bow_deep] [GESTURE:thank_you_bow] [GESTURE:sorry_bow] [GESTURE:curtsy_bow] [GESTURE:handshake_ready] [GESTURE:high_five_ready] — "
+            "Kommunikation: [GESTURE:agree] [GESTURE:disagree] [GESTURE:maybe] [GESTURE:question_shrug] [GESTURE:stop_hand] [GESTURE:wait_pose] [GESTURE:come_here] [GESTURE:go_away] [GESTURE:follow_me] [GESTURE:attention_please] [GESTURE:shhh] [GESTURE:emphasize] [GESTURE:thinking_finger] — "
+            "Gefühle: [GESTURE:excited] [GESTURE:happy] [GESTURE:joy] [GESTURE:sad] [GESTURE:fear] [GESTURE:surprised] [GESTURE:confused] [GESTURE:thinking] [GESTURE:proud] [GESTURE:confident] [GESTURE:curious] [GESTURE:tired] [GESTURE:bored] [GESTURE:relieved] [GESTURE:grateful] [GESTURE:apologetic] [GESTURE:determined] [GESTURE:hopeful] [GESTURE:victory] [GESTURE:defeat] [GESTURE:facepalm] [GESTURE:sigh_visual] — "
+            "Körperhaltung: [GESTURE:idle] [GESTURE:attentive] [GESTURE:relaxed] [GESTURE:alert] [GESTURE:reset]. Tags werden NICHT vorgelesen."
         ) if ctx.robot_gesture_available else ""
         format_rules = (
             "Regeln: Antworte NUR auf Deutsch. "
@@ -701,9 +707,15 @@ def _build_system_prompt(ctx: LLMContext) -> str:
     else:
         _gesture_hint_en = (
             " Body tags (only when requested, use sparingly): "
-            "[GESTURE:nod] = head nod, [GESTURE:wave] = wave hand, "
-            "[GESTURE:gesture_ready] = arms to ready position, "
-            "[GESTURE:gaze] = establish eye contact. Tags are stripped before speaking."
+            "Head: [GESTURE:nod] [GESTURE:shake_head] [GESTURE:tilt_thinking] [GESTURE:bow_head] — "
+            "Eyes: [GESTURE:wide_eyes] [GESTURE:blink] [GESTURE:wink_right] [GESTURE:sleepy_eyes] — "
+            "Both arms: [GESTURE:arms_open] [GESTURE:shrug] [GESTURE:gesture_ready] [GESTURE:arms_welcoming] [GESTURE:embrace_open] [GESTURE:cheering] [GESTURE:arms_celebratory] [GESTURE:hands_up] [GESTURE:arms_defensive] [GESTURE:arms_pleading] [GESTURE:clap_pose] [GESTURE:thumbs_both_up] [GESTURE:namaste] [GESTURE:heart_gesture] [GESTURE:world_gesture] — "
+            "Right: [GESTURE:wave] [GESTURE:wave_right_high] [GESTURE:point_right] [GESTURE:thumbs_up_right] [GESTURE:thumbs_down_right] [GESTURE:fist_right] [GESTURE:beckon_right] [GESTURE:stop_right] [GESTURE:salute_formal] [GESTURE:eureka] [GESTURE:ok_right] [GESTURE:peace_right] — "
+            "Left: [GESTURE:wave_left] [GESTURE:point_left] [GESTURE:reach_left] — "
+            "Greeting: [GESTURE:hello] [GESTURE:goodbye] [GESTURE:bow_greeting] [GESTURE:bow_deep] [GESTURE:thank_you_bow] [GESTURE:sorry_bow] [GESTURE:curtsy_bow] [GESTURE:handshake_ready] [GESTURE:high_five_ready] — "
+            "Communication: [GESTURE:agree] [GESTURE:disagree] [GESTURE:maybe] [GESTURE:question_shrug] [GESTURE:stop_hand] [GESTURE:wait_pose] [GESTURE:come_here] [GESTURE:go_away] [GESTURE:follow_me] [GESTURE:attention_please] [GESTURE:shhh] [GESTURE:emphasize] [GESTURE:thinking_finger] — "
+            "Emotion: [GESTURE:excited] [GESTURE:happy] [GESTURE:joy] [GESTURE:sad] [GESTURE:fear] [GESTURE:surprised] [GESTURE:confused] [GESTURE:thinking] [GESTURE:proud] [GESTURE:confident] [GESTURE:curious] [GESTURE:tired] [GESTURE:bored] [GESTURE:relieved] [GESTURE:grateful] [GESTURE:apologetic] [GESTURE:determined] [GESTURE:hopeful] [GESTURE:victory] [GESTURE:defeat] [GESTURE:facepalm] [GESTURE:sigh_visual] — "
+            "Posture: [GESTURE:idle] [GESTURE:attentive] [GESTURE:relaxed] [GESTURE:alert] [GESTURE:reset]. Tags are stripped before speaking."
         ) if ctx.robot_gesture_available else ""
         format_rules = (
             "Rules: Respond ONLY in English. "
