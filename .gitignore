@@ -1,6 +1,8 @@
 # Secrets — never commit
 .env
 albedo_voice_id.txt
+_find_bug.py
+_find_bug2.py
 masterprompts_human_interaction.md
 # Python
 __pycache__/
