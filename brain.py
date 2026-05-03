@@ -1664,8 +1664,10 @@ class Brain:
             except Exception as _exc:
                 # Log the error to the thought stream instead of killing the loop
                 try:
+                    import traceback as _tb
+                    _tb_str = _tb.format_exc().replace("\n", " | ")[:400]
                     self._consciousness.stream.append(
-                        f"[TICK-ERROR t={self.tick_count}] {_exc}"
+                        f"[TICK-ERROR t={self.tick_count}] {_exc} | {_tb_str}"
                     )
                     self.tick_count += 1  # advance so we don't retry the same tick
                 except Exception:

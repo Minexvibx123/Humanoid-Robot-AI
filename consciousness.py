@@ -18420,20 +18420,26 @@ class ConsciousnessCore:
             state.goal = new_goal
             self._last_goal_chg = self._tick
             _grounding = self.decision_grounding()
-            # ENFORCEMENT 1: full self-causality — every decision depends on
-            # self_model, global_state AND goal_structure simultaneously.
-            # If any pillar is absent, block the action completely.
-            if not (
+            # ENFORCEMENT 1: structural self-causality gate.
+            # integration_ready (phi) is excluded: low phi during "rest" would
+            # cause a deadlock (rest → low activity → low phi → CAUSAL-STOP → stuck).
+            # The three remaining pillars guarantee structural integrity without
+            # creating a self-reinforcing freeze loop.
+            _gate_ok = (
                 _grounding.get("goal") == state.goal
-                and _grounding.get("integration_ready", False)
                 and _grounding.get("global_access_ready", False)
                 and float(_grounding.get("self_model_signal", 0.0)) > 0.10
                 and _grounding.get("goal_scores_present", False)
-            ):
+            )
+            if not _gate_ok:
                 self.stream.append(
                     f"[CAUSAL-STOP] goal={state.goal} grounding={_grounding}"
                 )
             else:
+                if not _grounding.get("integration_ready", True):
+                    self.stream.append(
+                        f"[CAUSAL-WARN] low-phi tick={_grounding.get('tick')} goal={state.goal}"
+                    )
                 self._apply_goal(brain, state.goal)
             # Strategic meta: log goal for bias detection
             self.strategic_meta.record_goal(state.goal)
@@ -19810,7 +19816,15 @@ class ConsciousnessCore:
             self._last_meta_tick = self._tick
 
         # ── 12. Personality update ────────────────────────────────────────
-        self.personality.update(em)
+        _personality_ev: Dict[str, float] = {
+            "curiosity": em.curiosity - 0.5,
+            "caution": (em.stress + em.fatigue) * 0.5 - 0.5,
+            "dominance": (em.joy + em.anger) * 0.5 - 0.5,
+            "empathy": em.sadness - 0.5,
+            "openness": em.surprise - 0.5,
+            "composure": em.calm - 0.5,
+        }
+        self.personality.update(_personality_ev)
 
         # ── 13. Communication drive ───────────────────────────────────────
         # Decision is made entirely from internal state — not random, not timed.
