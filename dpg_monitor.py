@@ -131,6 +131,115 @@ SPATIAL_COLORS = {
 
 _INPUT_QUEUE: queue.Queue[str] = queue.Queue()
 
+_UI_TEXT = {
+    "de": {
+        "init_brain": "Initialisiere Gehirn …",
+        "prev_session": "Vorherige Session",
+        "gui_running": "Fast GUI läuft …",
+        "monitor_title": "Neural Consciousness Fast Monitor",
+        "status": "Status",
+        "region_activity": "Region Activity",
+        "emotion": "Emotion",
+        "synapse_delta": "Synapse Weight Delta",
+        "drives_concepts": "Drives / Concepts",
+        "camera": "Camera",
+        "anatomy": "Anatomy",
+        "spatial": "Spatial 3D",
+        "synapses": "Synapses",
+        "timeline": "Timeline",
+        "social": "Social",
+        "episodes": "Episodik",
+        "skills": "Skills",
+        "goal_history": "Ziel-Historie",
+        "concepts": "Konzepte",
+        "cognition": "Kognition",
+        "systemics": "Systemik",
+        "recognized_people": "Erkannte Personen",
+        "social_events": "Social Events / Gespräche",
+        "induced_concepts": "Induzierte Konzepte",
+        "experience_conf": "Erfahrungs-Konfidenz",
+        "self_continuity": "Selbst-Kontinuität",
+        "identity_guidelines": "Identität & Guidelines",
+        "world_model_block": "Weltmodell · Simulation · Überzeugungen",
+        "identity_arc_dims": "IdentityArc — Dimensionen",
+        "narrative_chapters": "NarrativeThread — Kapitel",
+        "long_horizon": "Langzeitziele (LongHorizon)",
+        "attention_quarantine": "Aufmerksamkeit · Quarantäne",
+        "chat_hint": "Eingabe…",
+        "send": "Senden",
+        "save": "Speichern",
+        "quit": "Beenden",
+        "conversation": "Conversation",
+        "thoughts": "Thoughts",
+        "head_live": "Head Live Control",
+        "preset": "Preset",
+        "apply_preset": "Apply Preset",
+        "head_cfg": "Head PCA9685 Config",
+        "apply_cfg": "Apply Config",
+        "send_cfg": "Send Config",
+        "serial": "Serial",
+        "connect": "Connect",
+        "disconnect": "Disconnect",
+        "saving": "Speichert…",
+        "saved": "Gespeichert",
+        "save_error": "Fehler",
+        "save_quit": "Speichert und beendet…",
+    },
+    "en": {
+        "init_brain": "Initializing brain ...",
+        "prev_session": "Previous session",
+        "gui_running": "Fast GUI running ...",
+        "monitor_title": "Neural Consciousness Fast Monitor",
+        "status": "Status",
+        "region_activity": "Region Activity",
+        "emotion": "Emotion",
+        "synapse_delta": "Synapse Weight Delta",
+        "drives_concepts": "Drives / Concepts",
+        "camera": "Camera",
+        "anatomy": "Anatomy",
+        "spatial": "Spatial 3D",
+        "synapses": "Synapses",
+        "timeline": "Timeline",
+        "social": "Social",
+        "episodes": "Episodes",
+        "skills": "Skills",
+        "goal_history": "Goal History",
+        "concepts": "Concepts",
+        "cognition": "Cognition",
+        "systemics": "Systemics",
+        "recognized_people": "Detected Persons",
+        "social_events": "Social Events / Dialogue",
+        "induced_concepts": "Induced Concepts",
+        "experience_conf": "Experience Confidence",
+        "self_continuity": "Self Continuity",
+        "identity_guidelines": "Identity & Guidelines",
+        "world_model_block": "World Model · Simulation · Beliefs",
+        "identity_arc_dims": "IdentityArc — Dimensions",
+        "narrative_chapters": "NarrativeThread — Chapters",
+        "long_horizon": "Long-Horizon Goals",
+        "attention_quarantine": "Attention · Quarantine",
+        "chat_hint": "Input...",
+        "send": "Send",
+        "save": "Save",
+        "quit": "Quit",
+        "conversation": "Conversation",
+        "thoughts": "Thoughts",
+        "head_live": "Head Live Control",
+        "preset": "Preset",
+        "apply_preset": "Apply Preset",
+        "head_cfg": "Head PCA9685 Config",
+        "apply_cfg": "Apply Config",
+        "send_cfg": "Send Config",
+        "serial": "Serial",
+        "connect": "Connect",
+        "disconnect": "Disconnect",
+        "saving": "Saving...",
+        "saved": "Saved",
+        "save_error": "Error",
+        "save_quit": "Saving and quitting...",
+    },
+}
+
 
 def input_thread() -> None:
     while True:
@@ -160,7 +269,9 @@ class FastMonitor:
                 camera=0,
                 lang="de",
             )
-        print("Initialisiere Gehirn …")
+        _lang = getattr(args, "lang", "de") or "de"
+        self._gui_lang = "en" if str(_lang).lower().startswith("en") else "de"
+        print(self._ui("init_brain"))
         stats = db_stats()
         if stats.get("exists") and stats.get("synapses", 0) > 0:
             saved_ts = stats.get("saved_at", 0)
@@ -168,7 +279,7 @@ class FastMonitor:
                 "%Y-%m-%d %H:%M:%S"
             )
             print(
-                f"Vorherige Session: {stats['synapses']:,} Synapsen  "
+                f"{self._ui('prev_session')}: {stats['synapses']:,} Synapsen  "
                 f"({stats.get('tick_count', 0):,} Ticks, {saved_str})"
             )
         self.brain = Brain(
@@ -178,11 +289,11 @@ class FastMonitor:
             use_web=not getattr(args, "noweb", False),
             web_fetch_interval=getattr(args, "web_interval", 15.0),
         )
-        self.brain.start()
-        # Apply language preference
-        _lang = getattr(args, "lang", "de") or "de"
+        self.brain._speech.language = "en-US" if self._gui_lang == "en" else "de-DE"
         self.brain._consciousness.lang._lang = _lang
-        print("Fast GUI läuft …")
+        self.brain._speech_output.set_language(_lang)
+        self.brain.start()
+        print(self._ui("gui_running"))
 
         self._reply_pending = False
         self._reply_time = 0.0
@@ -215,6 +326,9 @@ class FastMonitor:
         self._spatial_debug_lines: collections.deque[str] = collections.deque(maxlen=40)
         self._last_refresh: Dict[str, float] = {}
 
+    def _ui(self, key: str) -> str:
+        return _UI_TEXT.get(self._gui_lang, _UI_TEXT["de"]).get(key, key)
+
     def _refresh_due(self, key: str, interval_s: float, now: float) -> bool:
         last = self._last_refresh.get(key, 0.0)
         if now - last >= interval_s:
@@ -225,7 +339,7 @@ class FastMonitor:
     def build(self) -> None:
         dpg.create_context()
         dpg.create_viewport(
-            title="Neural Consciousness Fast Monitor", width=1780, height=1040
+            title=self._ui("monitor_title"), width=1780, height=1040
         )
         self._build_theme()
         self._build_textures()
@@ -282,19 +396,19 @@ class FastMonitor:
                 with dpg.child_window(
                     tag="left_pane", width=1140, autosize_y=True, border=False
                 ):
-                    dpg.add_text("Neural Consciousness Fast Monitor", color=ACCENT)
+                    dpg.add_text(self._ui("monitor_title"), color=ACCENT)
                     dpg.add_separator()
                     with dpg.group(horizontal=True):
                         with dpg.child_window(
                             tag="status_panel", width=560, height=250, border=True
                         ):
-                            dpg.add_text("Status")
+                            dpg.add_text(self._ui("status"))
                             dpg.add_separator()
                             dpg.add_text("", tag="status_text", wrap=540)
                         with dpg.child_window(
                             tag="region_panel", width=560, height=250, border=True
                         ):
-                            dpg.add_text("Region Activity")
+                            dpg.add_text(self._ui("region_activity"))
                             with dpg.plot(
                                 tag="activity_plot",
                                 height=210,
@@ -321,7 +435,7 @@ class FastMonitor:
                         with dpg.child_window(
                             tag="emotion_panel", width=370, height=250, border=True
                         ):
-                            dpg.add_text("Emotion")
+                            dpg.add_text(self._ui("emotion"))
                             with dpg.plot(
                                 tag="emotion_plot",
                                 height=210,
@@ -346,7 +460,7 @@ class FastMonitor:
                         with dpg.child_window(
                             tag="weight_panel", width=370, height=250, border=True
                         ):
-                            dpg.add_text("Synapse Weight Delta")
+                            dpg.add_text(self._ui("synapse_delta"))
                             with dpg.plot(
                                 tag="weight_plot",
                                 height=210,
@@ -370,7 +484,7 @@ class FastMonitor:
                         with dpg.child_window(
                             tag="drives_panel", width=380, height=250, border=True
                         ):
-                            dpg.add_text("Drives / Concepts")
+                            dpg.add_text(self._ui("drives_concepts"))
                             dpg.add_separator()
                             dpg.add_input_text(
                                 tag="drives_text",
@@ -380,14 +494,14 @@ class FastMonitor:
                                 height=205,
                             )
                     with dpg.tab_bar(tag="main_tabs"):
-                        with dpg.tab(label="Camera", tag="camera_tab"):
+                        with dpg.tab(label=self._ui("camera"), tag="camera_tab"):
                             dpg.add_image("camera_texture", tag="camera_image")
                             dpg.add_text("", tag="camera_status", wrap=1080)
-                        with dpg.tab(label="Anatomy", tag="anatomy_tab"):
+                        with dpg.tab(label=self._ui("anatomy"), tag="anatomy_tab"):
                             dpg.add_drawlist(
                                 width=1080, height=420, tag="anatomy_drawlist"
                             )
-                        with dpg.tab(label="Spatial 3D", tag="spatial_tab"):
+                        with dpg.tab(label=self._ui("spatial"), tag="spatial_tab"):
                             dpg.add_drawlist(
                                 width=1080, height=300, tag="spatial_drawlist"
                             )
@@ -399,7 +513,7 @@ class FastMonitor:
                                 width=1060,
                                 height=105,
                             )
-                        with dpg.tab(label="Synapses", tag="synapses_tab"):
+                        with dpg.tab(label=self._ui("synapses"), tag="synapses_tab"):
                             with dpg.plot(
                                 tag="synapses_plot",
                                 height=420,
@@ -424,7 +538,7 @@ class FastMonitor:
                                     [], [], parent=y_axis, tag="synapse_scatter"
                                 )
                             dpg.add_text("", tag="synapse_text")
-                        with dpg.tab(label="Timeline", tag="timeline_tab"):
+                        with dpg.tab(label=self._ui("timeline"), tag="timeline_tab"):
                             with dpg.plot(
                                 tag="timeline_plot",
                                 height=420,
@@ -447,14 +561,14 @@ class FastMonitor:
                                         tag=f"timeline_{region}",
                                         label=LABELS.get(region, region),
                                     )
-                        with dpg.tab(label="Social", tag="social_tab"):
+                        with dpg.tab(label=self._ui("social"), tag="social_tab"):
                             with dpg.child_window(
                                 tag="social_persons_panel",
                                 width=1060,
                                 height=200,
                                 border=True,
                             ):
-                                dpg.add_text("Erkannte Personen", color=ACCENT)
+                                dpg.add_text(self._ui("recognized_people"), color=ACCENT)
                                 dpg.add_separator()
                                 dpg.add_input_text(
                                     tag="social_persons_text",
@@ -469,7 +583,7 @@ class FastMonitor:
                                 height=195,
                                 border=True,
                             ):
-                                dpg.add_text("Social Events / Gespräche", color=ACCENT)
+                                dpg.add_text(self._ui("social_events"), color=ACCENT)
                                 dpg.add_separator()
                                 dpg.add_input_text(
                                     tag="social_events_text",
@@ -478,7 +592,7 @@ class FastMonitor:
                                     width=1040,
                                     height=150,
                                 )
-                        with dpg.tab(label="Episodik", tag="episodes_tab"):
+                        with dpg.tab(label=self._ui("episodes"), tag="episodes_tab"):
                             dpg.add_input_text(
                                 tag="episodes_text",
                                 multiline=True,
@@ -486,7 +600,7 @@ class FastMonitor:
                                 width=1060,
                                 height=415,
                             )
-                        with dpg.tab(label="Skills", tag="skills_tab"):
+                        with dpg.tab(label=self._ui("skills"), tag="skills_tab"):
                             dpg.add_text("", tag="skills_stats_text", wrap=1060)
                             dpg.add_separator()
                             with dpg.group(horizontal=True):
@@ -519,7 +633,7 @@ class FastMonitor:
                                         height=140,
                                     )
                             dpg.add_separator()
-                            dpg.add_text("Ziel-Historie", color=ACCENT)
+                            dpg.add_text(self._ui("goal_history"), color=ACCENT)
                             dpg.add_input_text(
                                 tag="skills_history_text",
                                 multiline=True,
@@ -527,7 +641,7 @@ class FastMonitor:
                                 width=1060,
                                 height=170,
                             )
-                        with dpg.tab(label="Konzepte", tag="concepts_tab"):
+                        with dpg.tab(label=self._ui("concepts"), tag="concepts_tab"):
                             dpg.add_text("", tag="concepts_header_text", wrap=1060)
                             dpg.add_separator()
                             with dpg.group(horizontal=True):
@@ -537,7 +651,7 @@ class FastMonitor:
                                     height=370,
                                     border=True,
                                 ):
-                                    dpg.add_text("Induzierte Konzepte", color=ACCENT)
+                                    dpg.add_text(self._ui("induced_concepts"), color=ACCENT)
                                     dpg.add_separator()
                                     dpg.add_input_text(
                                         tag="induced_concepts_text",
@@ -552,7 +666,7 @@ class FastMonitor:
                                     height=370,
                                     border=True,
                                 ):
-                                    dpg.add_text("Erfahrungs-Konfidenz", color=ACCENT)
+                                    dpg.add_text(self._ui("experience_conf"), color=ACCENT)
                                     dpg.add_separator()
                                     with dpg.plot(
                                         tag="concept_conf_plot",
@@ -581,7 +695,7 @@ class FastMonitor:
                                             tag="concept_conf_bars",
                                         )
                                     dpg.add_text("", tag="concept_conf_text", wrap=500)
-                        with dpg.tab(label="Kognition", tag="kognition_tab"):
+                        with dpg.tab(label=self._ui("cognition"), tag="kognition_tab"):
                             with dpg.group(horizontal=True):
                                 with dpg.child_window(
                                     tag="kontinuitat_panel",
@@ -589,7 +703,7 @@ class FastMonitor:
                                     height=300,
                                     border=True,
                                 ):
-                                    dpg.add_text("Selbst-Kontinuität", color=ACCENT)
+                                    dpg.add_text(self._ui("self_continuity"), color=ACCENT)
                                     dpg.add_separator()
                                     with dpg.plot(
                                         tag="continuity_plot",
@@ -622,7 +736,7 @@ class FastMonitor:
                                     height=300,
                                     border=True,
                                 ):
-                                    dpg.add_text("Identität & Guidelines", color=ACCENT)
+                                    dpg.add_text(self._ui("identity_guidelines"), color=ACCENT)
                                     dpg.add_separator()
                                     dpg.add_input_text(
                                         tag="identity_text",
@@ -638,7 +752,7 @@ class FastMonitor:
                                 border=True,
                             ):
                                 dpg.add_text(
-                                    "Weltmodell · Simulation · Überzeugungen",
+                                    self._ui("world_model_block"),
                                     color=ACCENT,
                                 )
                                 dpg.add_separator()
@@ -649,13 +763,13 @@ class FastMonitor:
                                     width=1040,
                                     height=120,
                                 )
-                        with dpg.tab(label="Systemik", tag="systemik_tab"):
+                        with dpg.tab(label=self._ui("systemics"), tag="systemik_tab"):
                             with dpg.group(horizontal=True):
                                 with dpg.child_window(
                                     tag="arc_panel", width=520, height=320, border=True
                                 ):
                                     dpg.add_text(
-                                        "IdentityArc — Dimensionen", color=ACCENT
+                                        self._ui("identity_arc_dims"), color=ACCENT
                                     )
                                     dpg.add_separator()
                                     dpg.add_input_text(
@@ -690,7 +804,7 @@ class FastMonitor:
                                     border=True,
                                 ):
                                     dpg.add_text(
-                                        "NarrativeThread — Kapitel", color=ACCENT
+                                        self._ui("narrative_chapters"), color=ACCENT
                                     )
                                     dpg.add_separator()
                                     dpg.add_input_text(
@@ -707,7 +821,7 @@ class FastMonitor:
                                     border=True,
                                 ):
                                     dpg.add_text(
-                                        "Langzeitziele (LongHorizon)", color=ACCENT
+                                        self._ui("long_horizon"), color=ACCENT
                                     )
                                     dpg.add_separator()
                                     dpg.add_input_text(
@@ -737,7 +851,7 @@ class FastMonitor:
                                     border=True,
                                 ):
                                     dpg.add_text(
-                                        "Aufmerksamkeit · Quarantäne", color=ACCENT
+                                        self._ui("attention_quarantine"), color=ACCENT
                                     )
                                     dpg.add_separator()
                                     dpg.add_input_text(
@@ -753,21 +867,21 @@ class FastMonitor:
                     with dpg.group(horizontal=True):
                         dpg.add_input_text(
                             tag="chat_input",
-                            hint="Eingabe…",
+                            hint=self._ui("chat_hint"),
                             width=330,
                             on_enter=True,
                             callback=self._send_chat,
                         )
-                        dpg.add_button(label="Senden", callback=self._send_chat)
-                        dpg.add_button(label="Speichern", callback=self._save_now)
+                        dpg.add_button(label=self._ui("send"), callback=self._send_chat)
+                        dpg.add_button(label=self._ui("save"), callback=self._save_now)
                         dpg.add_button(
-                            label="Beenden", callback=self._quit_now, small=True
+                            label=self._ui("quit"), callback=self._quit_now, small=True
                         )
                     dpg.add_text(
                         "", tag="thinking_indicator", color=(100, 210, 130, 255)
                     )
                     with dpg.tab_bar():
-                        with dpg.tab(label="Conversation"):
+                        with dpg.tab(label=self._ui("conversation")):
                             dpg.add_input_text(
                                 tag="conversation_text",
                                 multiline=True,
@@ -775,7 +889,7 @@ class FastMonitor:
                                 width=570,
                                 height=450,
                             )
-                        with dpg.tab(label="Thoughts"):
+                        with dpg.tab(label=self._ui("thoughts")):
                             dpg.add_input_text(
                                 tag="thoughts_text",
                                 multiline=True,
@@ -784,10 +898,10 @@ class FastMonitor:
                                 height=450,
                             )
                     with dpg.collapsing_header(
-                        label="Head Live Control", default_open=True
+                        label=self._ui("head_live"), default_open=True
                     ):
                         with dpg.group(horizontal=True):
-                            dpg.add_text("Preset")
+                            dpg.add_text(self._ui("preset"))
                             dpg.add_combo(
                                 items=self._head_preset_names(),
                                 tag="head_preset_combo",
@@ -795,7 +909,7 @@ class FastMonitor:
                                 width=170,
                             )
                             dpg.add_button(
-                                label="Apply Preset", callback=self._apply_head_preset
+                                label=self._ui("apply_preset"), callback=self._apply_head_preset
                             )
                         for cfg in self._head_config_items():
                             self._add_head_slider(
@@ -803,7 +917,7 @@ class FastMonitor:
                                 self._head_label(str(cfg.get("joint_name", ""))),
                             )
                     with dpg.collapsing_header(
-                        label="Head PCA9685 Config", default_open=True
+                        label=self._ui("head_cfg"), default_open=True
                     ):
                         with dpg.table(
                             tag="head_config_table",
@@ -840,12 +954,12 @@ class FastMonitor:
                                     self._head_cfg_tags[code] = fields
                         with dpg.group(horizontal=True):
                             dpg.add_button(
-                                label="Apply Config", callback=self._apply_head_config
+                                label=self._ui("apply_cfg"), callback=self._apply_head_config
                             )
                             dpg.add_button(
-                                label="Send Config", callback=self._send_head_config
+                                label=self._ui("send_cfg"), callback=self._send_head_config
                             )
-                    with dpg.collapsing_header(label="Serial", default_open=True):
+                    with dpg.collapsing_header(label=self._ui("serial"), default_open=True):
                         with dpg.group(horizontal=True):
                             dpg.add_input_text(
                                 tag="serial_port", hint="COM5", width=140
@@ -854,10 +968,10 @@ class FastMonitor:
                                 tag="serial_baud", default_value=115200, width=120
                             )
                             dpg.add_button(
-                                label="Connect", callback=self._connect_serial
+                                label=self._ui("connect"), callback=self._connect_serial
                             )
                             dpg.add_button(
-                                label="Disconnect", callback=self._disconnect_serial
+                                label=self._ui("disconnect"), callback=self._disconnect_serial
                             )
                         dpg.add_text("", tag="serial_status", wrap=560)
         self._sync_controls(force=True)
@@ -1073,7 +1187,7 @@ class FastMonitor:
 
     def _save_now(self, sender=None, app_data=None, user_data=None) -> None:
         del sender, app_data, user_data
-        dpg.set_value("thinking_indicator", "Speichert…")
+        dpg.set_value("thinking_indicator", self._ui("saving"))
 
         def _do_save() -> None:
             try:
@@ -1081,16 +1195,16 @@ class FastMonitor:
 
                 n = save_brain(self.brain)
                 self._thoughts.appendleft(f"[gespeichert] {n:,} Synapsen")
-                dpg.set_value("thinking_indicator", f"Gespeichert ({n:,} Syn)")
+                dpg.set_value("thinking_indicator", f"{self._ui('saved')} ({n:,} Syn)")
             except Exception as exc:
                 self._thoughts.appendleft(f"[speicher-fehler] {exc}")
-                dpg.set_value("thinking_indicator", f"Fehler: {exc}")
+                dpg.set_value("thinking_indicator", f"{self._ui('save_error')}: {exc}")
 
         threading.Thread(target=_do_save, daemon=True).start()
 
     def _quit_now(self, sender=None, app_data=None, user_data=None) -> None:
         del sender, app_data, user_data
-        dpg.set_value("thinking_indicator", "Speichert und beendet…")
+        dpg.set_value("thinking_indicator", self._ui("save_quit"))
 
         def _do_quit() -> None:
             self.shutdown()
@@ -1410,10 +1524,11 @@ class FastMonitor:
             )
         else:
             active_str = "—"
+        active_label = "active" if self._gui_lang == "en" else "aktiv"
         dpg.set_value(
             "skills_stats_text",
             f"plans_generated={plans}  recipes_used={recipes}  "
-            f"goal_history={len(history)}  aktiv: {active_str}",
+            f"goal_history={len(history)}  {active_label}: {active_str}",
         )
         costs = getattr(sl, "_learned_cost", {})
         dpg.set_value(
@@ -1453,14 +1568,24 @@ class FastMonitor:
         minted = len(getattr(ci, "_minted", {})) if ci else 0
         dpg.set_value(
             "concepts_header_text",
-            f"ExperienceAppraisal: {known} bekannte Konzepte  |  "
-            f"ConceptInductor: {minted} induziert",
+            (
+                f"ExperienceAppraisal: {known} known concepts  |  "
+                f"ConceptInductor: {minted} induced"
+                if self._gui_lang == "en"
+                else f"ExperienceAppraisal: {known} bekannte Konzepte  |  "
+                f"ConceptInductor: {minted} induziert"
+            ),
         )
         if ci:
             ci_stats = ci.stats()
             ind_lines = [
-                f"Patterns getrackt: {ci_stats['patterns_tracked']}"
-                f"  Konzepte geminted: {ci_stats['concepts_minted']}",
+                (
+                    f"Tracked patterns: {ci_stats['patterns_tracked']}"
+                    f"  Minted concepts: {ci_stats['concepts_minted']}"
+                    if self._gui_lang == "en"
+                    else f"Patterns getrackt: {ci_stats['patterns_tracked']}"
+                    f"  Konzepte geminted: {ci_stats['concepts_minted']}"
+                ),
                 "",
             ]
             for pattern, label in list(getattr(ci, "_minted", {}).items())[:35]:
@@ -1468,7 +1593,12 @@ class FastMonitor:
                 ind_lines.append(f"  {label[:42]:<42}  [{preds[:38]}]")
             dpg.set_value("induced_concepts_text", "\n".join(ind_lines))
         else:
-            dpg.set_value("induced_concepts_text", "ConceptInductor nicht verfügbar")
+            dpg.set_value(
+                "induced_concepts_text",
+                "ConceptInductor unavailable"
+                if self._gui_lang == "en"
+                else "ConceptInductor nicht verfügbar",
+            )
         all_concepts = sorted(
             getattr(ea, "_associations", {}).keys(),
             key=lambda c: ea.concept_confidence(c),
@@ -1506,13 +1636,21 @@ class FastMonitor:
             ],
         )
         fragile = cont.fragile_segments
-        fragile_str = "FRAGIL: " + ", ".join(fragile) if fragile else "stabil"
+        fragile_str = (
+            "FRAGILE: " + ", ".join(fragile)
+            if fragile and self._gui_lang == "en"
+            else "FRAGIL: " + ", ".join(fragile)
+            if fragile
+            else "stable"
+            if self._gui_lang == "en"
+            else "stabil"
+        )
         recent_alarms = list(cont._alarms)[-3:]
         dpg.set_value(
             "continuity_text",
             f"memory={cont.memory_coherence:.3f}  agency={cont.agency_stability:.3f}  values={cont.value_stability:.3f}\n"
             f"overall={cont.overall:.3f}   {fragile_str}\n"
-            f"Alarme: {'; '.join(recent_alarms) or '—'}",
+            f"{'Alarms' if self._gui_lang == 'en' else 'Alarme'}: {'; '.join(recent_alarms) or '—'}",
         )
 
         # ── Identity & Guidelines ─────────────────────────────────────────
@@ -1520,11 +1658,11 @@ class FastMonitor:
         guidelines = auto.guidelines
         summary = (auto.identity_summary or "—")[:140]
         gl_lines = [
-            f"  [{gl.source}] {gl.text} (stärke={gl.strength:.2f})"
+            f"  [{gl.source}] {gl.text} ({'strength' if self._gui_lang == 'en' else 'stärke'}={gl.strength:.2f})"
             for gl in guidelines[:12]
         ]
         id_str = (
-            f"Konsistenz: {id_cons:.3f}\n"
+            f"{'Consistency' if self._gui_lang == 'en' else 'Konsistenz'}: {id_cons:.3f}\n"
             f"Summary: {summary}\n\n"
             f"Guidelines ({len(guidelines)}):\n"
             + ("\n".join(gl_lines) if gl_lines else "  —")
@@ -1541,14 +1679,18 @@ class FastMonitor:
         quarantined = bs.quarantined()
         if quarantined:
             q_parts = [f"{s}/{r}/{o}" for s, r, o, _ in quarantined[:6]]
-            q_str = f"Quarantäne ({len(quarantined)}): " + ", ".join(q_parts)
+            q_str = (
+                f"Quarantine ({len(quarantined)}): " + ", ".join(q_parts)
+                if self._gui_lang == "en"
+                else f"Quarantäne ({len(quarantined)}): " + ", ".join(q_parts)
+            )
         else:
-            q_str = "keine Quarantäne"
+            q_str = "no quarantine" if self._gui_lang == "en" else "keine Quarantäne"
 
         bottom_str = (
-            f"── Weltmodell ───────────────────────────────────\n{wm_str}\n\n"
-            f"── Simulation (letzte Pfade) ────────────────────\n{sim_str}\n\n"
-            f"── Überzeugungen ────────────────────────────────\n"
+            f"── {'World Model' if self._gui_lang == 'en' else 'Weltmodell'} ───────────────────────────────────\n{wm_str}\n\n"
+            f"── {'Simulation (recent paths)' if self._gui_lang == 'en' else 'Simulation (letzte Pfade)'} ────────────────────\n{sim_str}\n\n"
+            f"── {'Beliefs' if self._gui_lang == 'en' else 'Überzeugungen'} ────────────────────────────────\n"
             f"aktiv={bs.size}   {q_str}"
         )
         dpg.set_value("kognition_bottom_text", bottom_str)
@@ -1561,16 +1703,28 @@ class FastMonitor:
         # ── IdentityArc ───────────────────────────────────────────────────
         arc = cs.identity_arc
         arc_lines = [
-            f"Konsistenz: {arc.consistency_score():.3f}   "
-            f"Charakter: {arc.character_summary()[:55]}",
-            f"Fehler-Stil: {arc.error_handling_style()}   "
-            f"Meta-Ziele: {len(arc._meta_goals)}",
+            (
+                f"Consistency: {arc.consistency_score():.3f}   "
+                f"Character: {arc.character_summary()[:55]}"
+                if self._gui_lang == "en"
+                else f"Konsistenz: {arc.consistency_score():.3f}   "
+                f"Charakter: {arc.character_summary()[:55]}"
+            ),
+            (
+                f"Error style: {arc.error_handling_style()}   "
+                f"Meta-goals: {len(arc._meta_goals)}"
+                if self._gui_lang == "en"
+                else f"Fehler-Stil: {arc.error_handling_style()}   "
+                f"Meta-Ziele: {len(arc._meta_goals)}"
+            ),
         ]
         recent_meta = list(arc._meta_goals)[-2:]
         for mg in recent_meta:
             arc_lines.append(f"  {mg[:70]}")
         arc_lines.append("")
-        arc_lines.append(f"  {'Dimension':<20} {'Ist':>5}  {'Ziel':>5}  {'Gap':>6}  OK")
+        arc_lines.append(
+            f"  {'Dimension':<20} {'Now' if self._gui_lang == 'en' else 'Ist':>5}  {'Target' if self._gui_lang == 'en' else 'Ziel':>5}  {'Gap':>6}  OK"
+        )
         arc_lines.append("  " + "─" * 48)
         for name, dim in arc.dimensions.items():
             ok = "✓" if dim.aligned() else "○"

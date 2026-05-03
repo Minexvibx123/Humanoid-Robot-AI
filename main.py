@@ -282,7 +282,9 @@ def _run_headless(args: argparse.Namespace) -> int:
         use_web=not args.noweb,
         web_fetch_interval=args.web_interval,
     )
+    brain._speech.language = "en-US" if args.lang == "en" else "de-DE"
     brain._consciousness.lang._lang = args.lang
+    brain._speech_output.set_language(args.lang)
     brain.start()
 
     _stop = [False]

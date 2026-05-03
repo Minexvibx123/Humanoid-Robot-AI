@@ -36,8 +36,12 @@ if TYPE_CHECKING:
 #   af_heart / af_nova / af_sky  — American female (natural)
 #   jf_gongitsune / jf_nezumi    — Japanese female (anime-style)
 KOKORO_VOICE = os.environ.get("ALBEDO_KOKORO_VOICE", "af_heart")
+KOKORO_VOICE_DE = os.environ.get("ALBEDO_KOKORO_VOICE_DE", KOKORO_VOICE)
+KOKORO_VOICE_EN = os.environ.get("ALBEDO_KOKORO_VOICE_EN", KOKORO_VOICE)
 KOKORO_SPEED = float(os.environ.get("ALBEDO_KOKORO_SPEED", "0.9"))
 KOKORO_LANG = os.environ.get("ALBEDO_KOKORO_LANG", "en-us")
+KOKORO_LANG_DE = os.environ.get("ALBEDO_KOKORO_LANG_DE", "de")
+KOKORO_LANG_EN = os.environ.get("ALBEDO_KOKORO_LANG_EN", KOKORO_LANG)
 
 # Path where kokoro ONNX model files are cached after first download
 _KOKORO_CACHE_DIR = os.path.join(os.path.dirname(__file__), "models", "kokoro")
@@ -305,6 +309,9 @@ class SpeechOutput:
         self._total_utterances: int = 0
         self.enabled: bool = True
         self._startup_errors: List[str] = []
+        self._language: str = "de"
+        self._kokoro_voice: str = KOKORO_VOICE_DE
+        self._kokoro_lang: str = KOKORO_LANG_DE
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -480,6 +487,22 @@ class SpeechOutput:
             return "TTS deaktiviert: " + "; ".join(dict.fromkeys(self._startup_errors))
         return "TTS deaktiviert"
 
+    def set_language(self, lang: str) -> None:
+        self._language = "en" if str(lang).lower().startswith("en") else "de"
+        self._kokoro_voice = (
+            KOKORO_VOICE_EN if self._language == "en" else KOKORO_VOICE_DE
+        )
+        self._kokoro_lang = (
+            KOKORO_LANG_EN if self._language == "en" else KOKORO_LANG_DE
+        )
+        if self._pyttsx3_engine is not None:
+            try:
+                self._pyttsx3_engine.stop()
+            except Exception:
+                pass
+            self._pyttsx3_engine = None
+            self._ensure_pyttsx3_engine()
+
     def _ensure_pyttsx3_engine(self) -> bool:
         if self._pyttsx3_engine is not None:
             return True
@@ -490,13 +513,15 @@ class SpeechOutput:
             self._pyttsx3_engine.setProperty("rate", self.DEFAULT_RATE)
             self._pyttsx3_engine.setProperty("volume", self.DEFAULT_VOLUME)
             voices = self._pyttsx3_engine.getProperty("voices")
+            lang_tokens = (
+                ("english", "en-us", "en-gb", "zira", "david", "hazel")
+                if self._language == "en"
+                else ("german", "deutsch", "de-de", "hedda", "katja", "stefan")
+            )
             for v in voices:
                 n = v.name.lower()
-                if (
-                    "german" in n
-                    or "deutsch" in n
-                    or "de-de" in str(v.languages).lower()
-                ):
+                langs = str(v.languages).lower()
+                if any(tok in n or tok in langs for tok in lang_tokens):
                     self._pyttsx3_engine.setProperty("voice", v.id)
                     break
             return True
@@ -625,9 +650,9 @@ class SpeechOutput:
         speed = max(0.5, min(2.0, req.rate / self.DEFAULT_RATE * KOKORO_SPEED))
         audio, sr = self._kokoro.create(
             req.text,
-            voice=KOKORO_VOICE,
+            voice=self._kokoro_voice,
             speed=speed,
-            lang=KOKORO_LANG,
+            lang=self._kokoro_lang,
         )
         # Apply pitch shift via resampling when non-zero
         if abs(req.pitch_shift) > 0.01:

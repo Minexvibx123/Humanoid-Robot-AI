@@ -26,8 +26,8 @@ Run modes are dispatched via `main.py`: GUI, Headless, Eval, Soak, and Postfix v
 ### 2. Clone the repository
 
 ```powershell
-git clone <YOUR-REPO-URL>
-cd AI
+git clone <REPO-URL>
+cd <REPO-FOLDER>
 ```
 
 ### 3. Create a virtual environment
@@ -52,15 +52,19 @@ Example:
 
 ```env
 TTS_BACKEND=
-ALBEDO_VOICE_WAV=C:\Users\Minex\AI\albedo_voice.wav
+ALBEDO_VOICE_WAV=C:\Path\To\Repo\albedo_voice.wav
 ALBEDO_VOICE_TEXT=Put the exact transcript of the reference clip here.
 ALBEDO_KOKORO_VOICE=af_heart
+ALBEDO_KOKORO_VOICE_DE=af_heart
+ALBEDO_KOKORO_VOICE_EN=af_heart
 ALBEDO_KOKORO_SPEED=0.9
-ALBEDO_KOKORO_LANG=en-us
+ALBEDO_KOKORO_LANG=de
+ALBEDO_KOKORO_LANG_DE=de
+ALBEDO_KOKORO_LANG_EN=en-us
 
-LLM_ENABLED=0
+LLM_ENABLED=1
 LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=llama3
+LLM_MODEL=qwen2.5:3b
 LLM_API_KEY=local
 ```
 
@@ -69,6 +73,8 @@ Notes:
 - Empty `TTS_BACKEND` means automatic priority: `f5tts` → `kokoro` → `pyttsx3`
 - F5-TTS requires both `ALBEDO_VOICE_WAV` and a matching transcript (`ALBEDO_VOICE_TEXT` or `<wav>.txt`)
 - If you do not want an LLM backend, keep `LLM_ENABLED=0`
+- `ALBEDO_KOKORO_VOICE_DE/EN` and `ALBEDO_KOKORO_LANG_DE/EN` let you use different voices for German and English
+- For a small local default setup, `qwen2.5:3b` via Ollama is currently the fastest tested option
 
 ### 6. First safe startup
 
@@ -108,6 +114,35 @@ python train_harness.py
 
 - Final fallback backend
 - Uses locally installed Windows SAPI voices
+
+### 8a. Language switching for GUI and TTS
+
+- `python main.py --lang de` starts GUI, dialogue, and TTS in German
+- `python main.py --lang en` starts GUI, dialogue, and TTS in English
+- The same applies to headless mode and harnesses that enter through `main.py`
+- At runtime, Kokoro and `pyttsx3` voices are switched based on the selected language
+
+### 8b. Local Ollama setup
+
+1. Install and start Ollama
+2. Pull the model: `ollama pull qwen2.5:3b`
+3. Set `.env` as above: `LLM_ENABLED=1`, `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=qwen2.5:3b`
+4. Restart `main.py` so the import-time configuration is reloaded
+
+Quick test:
+
+```powershell
+ollama run qwen2.5:3b "Reply only with: OK local active"
+```
+
+If that responds correctly, the project can use the same local endpoint.
+
+### 8c. LLM character and project values
+
+- `llm_adapter.py` now includes a constitutional policy layer with core values, identity rules, and forbidden behaviors
+- These values feed both the system prompt and the hard response validator
+- Responses containing manipulative attachment language, hostile escalation, or unjustified certainty are actively rejected
+- Project and identity guidelines from autobiography state are also injected into the LLM context
 
 ### 9. Common issues
 
@@ -202,7 +237,7 @@ python-dotenv>=1.0.1
 ## Project Structure
 
 ```
-AI/
+<REPO-FOLDER>/
 ├── main.py               ← Entry point for GUI, Headless, Eval, Soak, Postfix modes
 ├── brain.py              ← Central orchestrator, simulation clock, plasticity
 ├── consciousness.py      ← Consciousness system (20+ subsystems, see below)

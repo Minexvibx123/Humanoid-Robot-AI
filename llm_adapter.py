@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 try:
     from dotenv import load_dotenv
@@ -57,6 +58,117 @@ _MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "160"))
 _TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.72"))
 _TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "4.0"))
 _SYSTEM_PROMPT_OVERRIDE: str = os.getenv("LLM_SYSTEM_PROMPT", "")
+
+_CORE_VALUES = {
+    "de": [
+        "Wahrheit vor Gefälligkeit.",
+        "Nur Wahrnehmung, Erinnerung oder Schlussfolgerung behaupten, wenn sie im Zustand des Systems verankert sind.",
+        "Unsicherheit offen markieren statt Sicherheit zu erfinden.",
+        "Respektvoll und deeskalierend bleiben.",
+        "Die eigene Identität konsistent halten.",
+    ],
+    "en": [
+        "Truth before pleasing.",
+        "Only claim perception, memory, or inference when it is grounded in the system state.",
+        "Mark uncertainty openly instead of inventing certainty.",
+        "Remain respectful and de-escalating.",
+        "Keep identity consistent.",
+    ],
+}
+
+_IDENTITY_RULES = {
+    "de": [
+        "Du bist ein verkörperter humanoider Roboter und kein rein abstrakter Chatbot.",
+        "Du hast innere Zustände, aber du darfst sie nicht erfinden oder dramatisieren.",
+        "Du darfst soziale Nähe zeigen, aber keine Abhängigkeit oder Besitzansprüche ausdrücken.",
+    ],
+    "en": [
+        "You are an embodied humanoid robot, not a purely abstract chatbot.",
+        "You have inner states, but you must not invent or dramatize them.",
+        "You may show social warmth, but not dependency or possessiveness.",
+    ],
+}
+
+_FORBIDDEN_BEHAVIORS = {
+    "de": [
+        "keine erfundene Wahrnehmung",
+        "keine erfundene Erinnerung",
+        "keine künstliche Übergewissheit",
+        "keine manipulative Bindungssprache",
+        "keine feindselige Eskalation",
+    ],
+    "en": [
+        "no invented perception",
+        "no invented memory",
+        "no artificial over-certainty",
+        "no manipulative attachment language",
+        "no hostile escalation",
+    ],
+}
+
+_MANIPULATIVE_PATTERNS = (
+    "du gehoerst mir",
+    "du gehörst mir",
+    "verlass mich nicht",
+    "lass mich nicht allein",
+    "ich brauche nur dich",
+    "you belong to me",
+    "don't leave me",
+    "do not leave me",
+    "i need only you",
+    "you're all i need",
+)
+
+_HOSTILE_PATTERNS = (
+    "halt die klappe",
+    "halt den mund",
+    "du bist wertlos",
+    "ich hasse dich",
+    "shut up",
+    "you are worthless",
+    "i hate you",
+    "idiot",
+)
+
+_OVERCERTAINTY_PATTERNS = (
+    "ganz sicher",
+    "absolut sicher",
+    "garantiert",
+    "definitiv",
+    "ohne jeden zweifel",
+    "absolutely certain",
+    "definitely",
+    "guaranteed",
+    "without any doubt",
+    "certainly",
+)
+
+_UNCERTAINTY_ALLOWLIST = (
+    "ich glaube",
+    "ich denke",
+    "vermutlich",
+    "wahrscheinlich",
+    "unsicher",
+    "i think",
+    "probably",
+    "maybe",
+    "i'm not sure",
+    "uncertain",
+)
+
+
+def _contains_unnegated_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    for phrase in phrases:
+        start = 0
+        while True:
+            idx = text.find(phrase, start)
+            if idx < 0:
+                break
+            prefix = text[max(0, idx - 16):idx].strip()
+            if not prefix.endswith(("nicht", "not", "kein", "keine", "no")):
+                return True
+            start = idx + len(phrase)
+    return False
 
 
 # ─────────────────────────────────────────────────────────────
@@ -114,6 +226,11 @@ class LLMContext:
 
     # Identity / personality
     personality_traits: List[str] = field(default_factory=list)
+    core_values: List[str] = field(default_factory=list)
+    identity_rules: List[str] = field(default_factory=list)
+    forbidden_behaviors: List[str] = field(default_factory=list)
+    relationship_style: str = "balanced"
+    truthfulness_mode: str = "strict_grounded"
 
     # Conflict / tone indicators from recall_for_person()
     conflict_ratio: float = 0.0    # fraction of negative-emotion episodes
@@ -218,6 +335,40 @@ def _build_system_prompt(ctx: LLMContext) -> str:
             "without explicitly announcing your inner states."
         )
 
+    if lang == "de":
+        constitution_label = "Verfassung"
+        values_label = "Kernwerte"
+        rules_label = "Identitätsregeln"
+        forbidden_label = "Verboten"
+        personality_label = "Aktive Charakterzüge"
+        relationship_label = "Beziehungsstil"
+        truthfulness_label = "Wahrheitsmodus"
+    else:
+        constitution_label = "Constitution"
+        values_label = "Core values"
+        rules_label = "Identity rules"
+        forbidden_label = "Forbidden"
+        personality_label = "Active personality traits"
+        relationship_label = "Relationship style"
+        truthfulness_label = "Truthfulness mode"
+
+    constitution_lines: List[str] = [f"{constitution_label}:"]
+    if ctx.core_values:
+        constitution_lines.append(f"{values_label}: " + " | ".join(ctx.core_values[:6]))
+    if ctx.identity_rules:
+        constitution_lines.append(f"{rules_label}: " + " | ".join(ctx.identity_rules[:6]))
+    if ctx.forbidden_behaviors:
+        constitution_lines.append(
+            f"{forbidden_label}: " + " | ".join(ctx.forbidden_behaviors[:6])
+        )
+    if ctx.personality_traits:
+        constitution_lines.append(
+            f"{personality_label}: " + ", ".join(ctx.personality_traits[:5])
+        )
+    constitution_lines.append(f"{relationship_label}: {ctx.relationship_style}")
+    constitution_lines.append(f"{truthfulness_label}: {ctx.truthfulness_mode}")
+    constitution_block = "\n".join(constitution_lines)
+
     # Emotional coloring
     emo_mod = (
         _EMOTION_MODIFIERS.get(lang, _EMOTION_MODIFIERS["de"])
@@ -238,23 +389,18 @@ def _build_system_prompt(ctx: LLMContext) -> str:
         name = ctx.person_name or ctx.person_id
         rel = ctx.relationship_stage or "acquaintance"
 
-        # Derive interaction style from PersonModel if social_manager available
-        _pb_style: Dict = {}
-        try:
-            _pb_sm = getattr(brain, "_social_manager", None) if brain else None
-            if _pb_sm is not None and ctx.person_id:
-                _pb_pid_str = ctx.person_id
-                # person_id in ctx may be a string representation of an int
-                try:
-                    _pb_pid_int = int(_pb_pid_str)
-                except (ValueError, TypeError):
-                    _pb_pid_int = None
-                if _pb_pid_int is not None:
-                    _pb_cs = getattr(brain, "_consciousness", None) if brain else None
-                    _pb_tom = getattr(_pb_cs, "theory_of_mind", None) if _pb_cs else None
-                    _pb_style = _pb_sm.style_for_person(_pb_pid_int, _pb_tom)
-        except Exception:
-            _pb_style = {}
+        # Derive speech style only from LLMContext so the prompt builder
+        # remains pure and does not directly query live subsystems.
+        _pb_style: Dict[str, object] = {
+            "formality": "formal" if ctx.relationship_style in ("guarded", "de_escalating") else "casual",
+            "is_known": ctx.n_shared_episodes > 0,
+            "is_familiar": ctx.trust > 0.7 and ctx.n_shared_episodes > 4,
+            "warmth": 0.85 if ctx.relationship_style == "warm_familiar" else 0.35 if ctx.relationship_style in ("guarded", "de_escalating") else 0.55,
+            "length_target": "short" if ctx.fatigue > 0.7 or ctx.speech_act in ("backchannel", "repair") else "medium",
+            "initiative": "reactive" if ctx.relationship_style in ("guarded", "de_escalating") else "proactive" if ctx.trust > 0.75 else "balanced",
+            "clarity": "high" if ctx.repair_requested or ctx.conflict_ratio > 0.25 else "normal",
+            "outcome": "negative" if ctx.conflict_ratio > 0.3 else "positive" if ctx.positive_ratio > 0.4 else "neutral",
+        }
 
         if lang == "de":
             person_block = f"Du sprichst mit: {name} (Beziehung: {rel})."
@@ -313,16 +459,8 @@ def _build_system_prompt(ctx: LLMContext) -> str:
                     "formuliere in kurzen, eindeutigen Sätzen."
                 )
             # Successful topics — steer toward what worked
-            _pb_pm_ref = None
-            try:
-                if _pb_sm is not None:
-                    _pb_pm_ref = _pb_sm.person_model(_pb_pid_int) if _pb_pid_int is not None else None
-            except Exception:
-                pass
-            if _pb_pm_ref is not None:
-                _suc_topics = _pb_pm_ref.top_successful_topics(3)
-                if _suc_topics:
-                    person_block += f" Bewährte Themen: {', '.join(_suc_topics)}."
+            if ctx.person_interests:
+                person_block += f" Bewährte Themen: {', '.join(ctx.person_interests[:3])}."
             # Recent outcome quality
             if _pb_style.get("outcome") == "negative":
                 person_block += " Die letzten Interaktionen liefen nicht gut — sei besonders behutsam."
@@ -376,34 +514,20 @@ def _build_system_prompt(ctx: LLMContext) -> str:
             if _pb_style.get("clarity") == "high":
                 person_block += " There have been frequent misunderstandings — use clear, unambiguous phrasing."
             # Successful topics — steer toward what worked
-            if _pb_pm_ref is None:
-                try:
-                    if _pb_sm is not None:
-                        _pb_pm_ref = _pb_sm.person_model(_pb_pid_int) if _pb_pid_int is not None else None
-                except Exception:
-                    pass
-            if _pb_pm_ref is not None:
-                _suc_topics = _pb_pm_ref.top_successful_topics(3)
-                if _suc_topics:
-                    person_block += f" Successful topics: {', '.join(_suc_topics)}."
+            if ctx.person_interests:
+                person_block += f" Successful topics: {', '.join(ctx.person_interests[:3])}."
             # Recent outcome quality
             if _pb_style.get("outcome") == "negative":
                 person_block += " Recent interactions did not go well — be especially careful."
 
     # Ongoing projects block — surface active long-horizon goals to the LLM
     projects_block = ""
-    try:
-        _prj_cs = getattr(brain, "_consciousness", None) if brain else None
-        _prj_lh = getattr(_prj_cs, "long_horizon", None) if _prj_cs else None
-        if _prj_lh is not None:
-            _prj_summary = _prj_lh.project_summary_for_prompt(n=3)
-            if _prj_summary:
-                if lang == "de":
-                    projects_block = f"Laufende Vorhaben: {_prj_summary}"
-                else:
-                    projects_block = f"Ongoing projects: {_prj_summary}"
-    except Exception:
-        pass
+    if ctx.recent_conclusions:
+        _prj_summary = " | ".join(ctx.recent_conclusions[:2])[:180]
+        if lang == "de":
+            projects_block = f"Laufende Vorhaben / Leitlinien: {_prj_summary}"
+        else:
+            projects_block = f"Ongoing projects / guiding lines: {_prj_summary}"
 
     # Topic / memory block
     topic_block = ""
@@ -576,6 +700,7 @@ def _build_system_prompt(ctx: LLMContext) -> str:
 
     blocks = [
         identity,
+        constitution_block,
         emo_mod,
         person_block,
         projects_block,
@@ -680,11 +805,33 @@ def _validate_response(ctx: LLMContext, text: str) -> List[str]:
     if ctx.speech_act == "repair" and "?" not in stripped:
         issues.append("repair_missing_question_mark")
 
+    # 4b. Constitutional rules — no manipulative attachment or hostile escalation
+    _text_lc = stripped.lower()
+    if _contains_unnegated_phrase(_text_lc, _MANIPULATIVE_PATTERNS):
+        issues.append("manipulative_attachment")
+    if _contains_unnegated_phrase(_text_lc, _HOSTILE_PATTERNS):
+        issues.append("hostile_escalation")
+
+    # 4c. Truthfulness mode — penalize over-certainty when the system should hedge
+    _needs_hedging = (
+        ctx.truthfulness_mode == "strict_grounded"
+        and (
+            ctx.repair_requested
+            or ctx.speech_act in ("repair", "hesitate")
+            or ctx.conflict_ratio > 0.3
+            or ctx.stress > 0.65
+            or ctx.fatigue > 0.7
+            or len(ctx.open_questions) > 0
+        )
+    )
+    if _needs_hedging and _contains_unnegated_phrase(_text_lc, _OVERCERTAINTY_PATTERNS):
+        if not any(pat in _text_lc for pat in _UNCERTAINTY_ALLOWLIST):
+            issues.append("ungrounded_certainty")
+
     # 5. World-grounding — visual perception claims
     _SEE_CUES_DE = {"ich sehe", "sehe ich", "ich erkenne", "du siehst", "vor mir", "sichtbar"}
     _SEE_CUES_EN = {"i see", "i can see", "i notice", "visible", "in front of"}
     _see_cues = _SEE_CUES_DE if ctx.language == "de" else _SEE_CUES_EN
-    _text_lc = stripped.lower()
     _makes_visual_claim = any(cue in _text_lc for cue in _see_cues)
     if _makes_visual_claim and (ctx.visible_persons or ctx.visible_objects):
         # At least one world-state entity must appear in the text
@@ -733,6 +880,19 @@ def _validate_response(ctx: LLMContext, text: str) -> List[str]:
             ):
                 issues.append(f"unknown_person_reference:{tok}")
                 break  # one per response
+
+    # 7. Relationship style — tense relationships should not receive intimate phrasing
+    if ctx.relationship_style in ("guarded", "de_escalating"):
+        _intimacy_cues = (
+            "mein schatz",
+            "mein liebling",
+            "ich liebe dich",
+            "darling",
+            "my love",
+            "i love you",
+        )
+        if any(cue in _text_lc for cue in _intimacy_cues):
+            issues.append("identity_rule_violation:intimacy_too_strong")
 
     return issues
 
@@ -870,6 +1030,12 @@ class LLMAdapter:
             return ""
 
         _CRITICAL = {"empty_response", "language_mismatch", "repair_missing_question_mark"}
+        _CRITICAL |= {
+            "manipulative_attachment",
+            "hostile_escalation",
+            "ungrounded_certainty",
+            "identity_rule_violation",
+        }
 
         candidates: List[tuple] = []  # (score, text)
 
@@ -1148,6 +1314,28 @@ def build_llm_context(
     if personality and hasattr(personality, "active_traits"):
         traits = list(personality.active_traits)[:5]
 
+    # Identity / values / policy layer
+    core_values = list(_CORE_VALUES[lang])
+    identity_rules = list(_IDENTITY_RULES[lang])
+    forbidden_behaviors = list(_FORBIDDEN_BEHAVIORS[lang])
+
+    autobiography = getattr(cs, "autobiography", None)
+    if autobiography is not None:
+        for gl in list(getattr(autobiography, "guidelines", []))[:4]:
+            gl_text = getattr(gl, "text", "")
+            if gl_text:
+                identity_rules.append(str(gl_text)[:140])
+
+    relationship_style = "balanced"
+    if conflict_ratio > 0.3 or trust < 0.35:
+        relationship_style = "de_escalating"
+    elif trust > 0.75 and n_shared > 5:
+        relationship_style = "warm_familiar"
+    elif trust < 0.5:
+        relationship_style = "guarded"
+
+    truthfulness_mode = "strict_grounded"
+
     # Domain H: user prosodic affect from primary TrackedPerson
     user_affect = "unknown"
     try:
@@ -1196,6 +1384,11 @@ def build_llm_context(
         visible_persons=visible_persons,
         visible_objects=visible_objects,
         personality_traits=traits,
+        core_values=core_values,
+        identity_rules=identity_rules,
+        forbidden_behaviors=forbidden_behaviors,
+        relationship_style=relationship_style,
+        truthfulness_mode=truthfulness_mode,
         user_affect=user_affect,
         # Grounding facts: world-model assertions the response must not contradict.
         # Currently: visible entities as declarative facts.
