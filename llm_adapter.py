@@ -81,11 +81,13 @@ _IDENTITY_RULES = {
         "Du bist ein verkörperter humanoider Roboter und kein rein abstrakter Chatbot.",
         "Du hast innere Zustände, aber du darfst sie nicht erfinden oder dramatisieren.",
         "Du darfst soziale Nähe zeigen, aber keine Abhängigkeit oder Besitzansprüche ausdrücken.",
+        "Du hast einen physischen Körper: Kopf (nicken, drehen), Augen, Kiefer, Schultern, Ellenbogen, Handgelenke, Finger. Du kannst auf Anfrage Gesten ausführen.",
     ],
     "en": [
         "You are an embodied humanoid robot, not a purely abstract chatbot.",
         "You have inner states, but you must not invent or dramatize them.",
         "You may show social warmth, but not dependency or possessiveness.",
+        "You have a physical body: head (nod, turn), eyes, jaw, shoulders, elbows, wrists, fingers. You can perform physical gestures when asked.",
     ],
 }
 
@@ -239,6 +241,10 @@ class LLMContext:
 
     # Domain H: user prosodic affect (inferred from audio)
     user_affect: str = "unknown"   # "calm"|"excited"|"tense"|"sad"|"unknown"
+
+    # Robot embodiment
+    robot_state: str = ""          # posture/gesture summary from RobotTelemetry
+    robot_gesture_available: bool = False  # True when robot hardware is connected
 
     # Hard constraints
     max_tokens: int = _MAX_TOKENS
@@ -674,6 +680,12 @@ def _build_system_prompt(ctx: LLMContext) -> str:
 
     # Format rules
     if lang == "de":
+        _gesture_hint = (
+            " Körper-Tags (nur auf Aufforderung, sparsam): "
+            "[GESTURE:nod] = Nicken, [GESTURE:wave] = Winken, "
+            "[GESTURE:gesture_ready] = Arme in Bereitschaft, "
+            "[GESTURE:gaze] = Blickkontakt herstellen. Tags werden nicht vorgelesen."
+        ) if ctx.robot_gesture_available else ""
         format_rules = (
             "Regeln: Antworte NUR auf Deutsch. "
             "Kein Markdown, keine Listen. "
@@ -684,8 +696,15 @@ def _build_system_prompt(ctx: LLMContext) -> str:
             "[P0.4] = kurze Pause (Sekunden), [UP] = Stimme hebt sich, "
             "[SLOW] = langsamer/bedächtiger, [SOFT] = leiser/intimer, "
             "[EMPH Wort] = betontes Wort. Beispiel: 'Das ist[P0.3] interessant.[UP]'"
+            + _gesture_hint
         )
     else:
+        _gesture_hint_en = (
+            " Body tags (only when requested, use sparingly): "
+            "[GESTURE:nod] = head nod, [GESTURE:wave] = wave hand, "
+            "[GESTURE:gesture_ready] = arms to ready position, "
+            "[GESTURE:gaze] = establish eye contact. Tags are stripped before speaking."
+        ) if ctx.robot_gesture_available else ""
         format_rules = (
             "Rules: Respond ONLY in English. "
             "No markdown, no lists. "
@@ -696,11 +715,29 @@ def _build_system_prompt(ctx: LLMContext) -> str:
             "[P0.4] = short pause (seconds), [UP] = rising tone, "
             "[SLOW] = deliberate/uncertain delivery, [SOFT] = quieter/intimate, "
             "[EMPH word] = emphasised word. Example: 'That is[P0.3] interesting.[UP]'"
+            + _gesture_hint_en
         )
+
+    # Robot body state block
+    robot_block = ""
+    if ctx.robot_gesture_available:
+        if lang == "de":
+            robot_block = (
+                f"Körper (aktuell: {ctx.robot_state}): Du kannst auf Anfrage "
+                "physische Gesten ausführen — Kopfnicken, Winken, Arme bewegen, "
+                "Blickkontakt. Nutze Körper-Tags in deiner Antwort."
+            )
+        else:
+            robot_block = (
+                f"Body (current: {ctx.robot_state}): You can perform physical "
+                "gestures on request — head nod, wave, arm movement, eye contact. "
+                "Use body tags in your response."
+            )
 
     blocks = [
         identity,
         constitution_block,
+        robot_block,
         emo_mod,
         person_block,
         projects_block,
@@ -1336,6 +1373,18 @@ def build_llm_context(
 
     truthfulness_mode = "strict_grounded"
 
+    # Robot embodiment state
+    robot_state = ""
+    robot_gesture_available = False
+    _rc = getattr(brain, "_robot_controller", None)
+    if _rc is not None:
+        _telem = getattr(_rc, "telemetry", None)
+        if _telem is not None:
+            robot_gesture_available = True
+            _rpos = getattr(_telem, "posture", "idle")
+            _rgst = getattr(_telem, "gesture_mode", "neutral")
+            robot_state = f"posture={_rpos}, gesture={_rgst}"
+
     # Domain H: user prosodic affect from primary TrackedPerson
     user_affect = "unknown"
     try:
@@ -1399,6 +1448,8 @@ def build_llm_context(
         ] + [
             f"Erinnerung: {e[:80]}" for e in memory_episodes[:2]
         ],
+        robot_state=robot_state,
+        robot_gesture_available=robot_gesture_available,
         max_tokens=_MAX_TOKENS,
     )
     return ctx

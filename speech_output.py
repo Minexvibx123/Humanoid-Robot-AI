@@ -20,6 +20,7 @@ Force a backend via env:  TTS_BACKEND=f5tts | kokoro | pyttsx3
 
 from __future__ import annotations
 
+import logging
 import os
 import queue
 import re
@@ -27,6 +28,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from dialogue_manager import UtterancePlan
@@ -212,6 +215,20 @@ def _f5tts_load(
     """Load F5-TTS model and return (F5TTS_instance, ref_wav, ref_text) or None."""
     try:
         _install_torchaudio_fallback(ref_wav)
+        # Warn if the reference WAV is longer than the recommended 15 seconds;
+        # F5-TTS synthesis time scales with ref duration.
+        try:
+            import soundfile as _sf
+            _info = _sf.info(ref_wav)
+            _dur = _info.frames / max(_info.samplerate, 1)
+            if _dur > 15.0:
+                logger.warning(
+                    "[TTS] F5-TTS ref WAV is %.1fs — recommended ≤15s. "
+                    "Trim %s to a short clean clip for faster synthesis.",
+                    _dur, ref_wav,
+                )
+        except Exception:
+            pass
         from f5_tts.api import F5TTS  # type: ignore
 
         instance = F5TTS()
@@ -225,28 +242,44 @@ def _f5tts_load(
 # ─────────────────────────────────────────────────────────────
 
 
+_KOKORO_MODEL_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/kokoro-v1.0.int8.onnx"
+)
+_KOKORO_VOICES_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/voices-v1.0.bin"
+)
+
+
+def _kokoro_download_file(url: str, dst: str) -> None:
+    """Download *url* to *dst* with a simple progress log."""
+    import urllib.request
+
+    logger.info("Kokoro: downloading %s → %s", url.split("/")[-1], dst)
+
+    def _progress(block_num: int, block_size: int, total_size: int) -> None:
+        if total_size > 0 and block_num % 200 == 0:
+            pct = min(100, block_num * block_size * 100 // total_size)
+            logger.info("Kokoro download: %d%%", pct)
+
+    urllib.request.urlretrieve(url, dst, reporthook=_progress)
+    logger.info("Kokoro: download complete → %s", dst)
+
+
 def _kokoro_load() -> Optional[object]:
-    """Download + load the Kokoro ONNX model. Returns Kokoro instance or None."""
+    """Download (if needed) and load the Kokoro ONNX model. Returns Kokoro instance or None."""
     try:
-        from huggingface_hub import hf_hub_download
         from kokoro_onnx import Kokoro
 
         os.makedirs(_KOKORO_CACHE_DIR, exist_ok=True)
-        model_dst = os.path.join(_KOKORO_CACHE_DIR, "kokoro-v1.0.onnx")
+        model_dst = os.path.join(_KOKORO_CACHE_DIR, "kokoro-v1.0.int8.onnx")
         voices_dst = os.path.join(_KOKORO_CACHE_DIR, "voices-v1.0.bin")
 
         if not os.path.exists(model_dst):
-            model_dst = hf_hub_download(
-                repo_id="hexgrad/Kokoro-82M",
-                filename="kokoro-v1.0.onnx",
-                local_dir=_KOKORO_CACHE_DIR,
-            )
+            _kokoro_download_file(_KOKORO_MODEL_URL, model_dst)
         if not os.path.exists(voices_dst):
-            voices_dst = hf_hub_download(
-                repo_id="hexgrad/Kokoro-82M",
-                filename="voices-v1.0.bin",
-                local_dir=_KOKORO_CACHE_DIR,
-            )
+            _kokoro_download_file(_KOKORO_VOICES_URL, voices_dst)
 
         return Kokoro(model_dst, voices_dst)
     except Exception:
@@ -618,18 +651,26 @@ class SpeechOutput:
 
     def _speak_f5tts(self, req: _SpeechRequest) -> None:
         """Synthesise with F5-TTS (zero-shot voice cloning) and play via sounddevice."""
+        import io
+        import contextlib
         import sounddevice as sd
 
         # speed param: F5-TTS accepts 0.5–2.0; map from WPM ratio
         speed = max(0.5, min(2.0, req.rate / self.DEFAULT_RATE))
         try:
-            wav, sr, _ = self._f5tts.infer(
-                ref_file=self._f5tts_ref_wav,
-                ref_text=self._f5tts_ref_text,
-                gen_text=req.text,
-                speed=speed,
-                show_info=lambda *a, **kw: None,  # suppress console output
-            )
+            # F5-TTS internally prints ref_text / gen_text and tqdm bars to
+            # stdout/stderr regardless of the show_info callback.  Redirect
+            # both streams for the duration of inference to keep the console
+            # clean.
+            _sink = io.StringIO()
+            with contextlib.redirect_stdout(_sink), contextlib.redirect_stderr(_sink):
+                wav, sr, _ = self._f5tts.infer(
+                    ref_file=self._f5tts_ref_wav,
+                    ref_text=self._f5tts_ref_text,
+                    gen_text=req.text,
+                    speed=speed,
+                    show_info=lambda *a, **kw: None,
+                )
             # Apply pitch shift via resampling when non-zero
             if abs(req.pitch_shift) > 0.01:
                 _factor = 2.0 ** (req.pitch_shift * 0.5)

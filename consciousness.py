@@ -23028,6 +23028,7 @@ class ConsciousnessCore:
         #   new person (n=0)              → GREET or simple ASSERT
         #   high familiarity + trust      → ASK or direct ASSERT
         _mem_rec: Optional[Dict] = None
+        _mem_pid = None
         if planned_speech_act is None:
             _mem_sm = getattr(brain, "_social_manager", None)
             _mem_pid = _mem_sm.primary_interlocutor() if _mem_sm else None
@@ -24876,6 +24877,33 @@ class ConsciousnessCore:
                 person_id=_llm_pid,
             )
             _llm_reply = self._llm_adapter.generate(_llm_ctx)
+
+            # ── Gesture-tag extraction ──────────────────────────────────
+            # The LLM may embed [GESTURE:nod] / [GESTURE:wave] etc. in its
+            # reply to trigger physical robot movements.  Strip the tags from
+            # the speech text and execute them on the robot controller.
+            if _llm_reply:
+                import re as _re_gest
+                _gest_hits = _re_gest.findall(r'\[GESTURE:(\w+)\]', _llm_reply)
+                if _gest_hits:
+                    _llm_reply = _re_gest.sub(r'\[GESTURE:\w+\]', '', _llm_reply).strip()
+                    _rc_gest = getattr(brain, "_robot_controller", None)
+                    if _rc_gest is not None:
+                        for _gtag in _gest_hits:
+                            try:
+                                if _gtag == "nod":
+                                    _rc_gest.nod_head()
+                                elif _gtag == "gaze":
+                                    _rc_gest.gaze_at_person()
+                                elif _gtag in ("wave", "gesture_ready"):
+                                    _rc_gest.apply_action(
+                                        "set_pose",
+                                        {"arms": "gesture_ready", "hands": "open"},
+                                        0,
+                                    )
+                            except Exception:
+                                pass
+
 
         # ── Tier -2: Phenomenal introspection ──────────────────────────────
         # When the experiential state is notable or user asks about inner state,
