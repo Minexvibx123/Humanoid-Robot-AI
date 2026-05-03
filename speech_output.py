@@ -43,6 +43,33 @@ KOKORO_LANG = os.environ.get("ALBEDO_KOKORO_LANG", "en-us")
 _KOKORO_CACHE_DIR = os.path.join(os.path.dirname(__file__), "models", "kokoro")
 
 
+def _install_torchaudio_fallback(ref_wav: str) -> bool:
+    """Patch torchaudio.load to use soundfile when TorchCodec is unavailable."""
+    try:
+        import torchaudio
+
+        try:
+            torchaudio.load(ref_wav)
+            return True
+        except RuntimeError as exc:
+            if "Could not load libtorchcodec" not in str(exc):
+                return False
+
+        import numpy as np
+        import soundfile as sf
+        import torch
+
+        def _soundfile_load(path, *args, **kwargs):
+            data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+            tensor = torch.from_numpy(np.ascontiguousarray(data.T))
+            return tensor, sample_rate
+
+        torchaudio.load = _soundfile_load
+        return True
+    except Exception:
+        return False
+
+
 # ─────────────────────────────────────────────────────────────
 # Speech request
 # ─────────────────────────────────────────────────────────────
@@ -180,6 +207,7 @@ def _f5tts_load(
 ) -> "Optional[Tuple[object, str, str]]":
     """Load F5-TTS model and return (F5TTS_instance, ref_wav, ref_text) or None."""
     try:
+        _install_torchaudio_fallback(ref_wav)
         from f5_tts.api import F5TTS  # type: ignore
 
         instance = F5TTS()
@@ -328,25 +356,10 @@ class SpeechOutput:
 
         # ── 3. pyttsx3 fallback ───────────────────────────────
         if not ok and force in ("", "pyttsx3"):
-            try:
-                import pyttsx3
-
-                self._pyttsx3_engine = pyttsx3.init()
-                self._pyttsx3_engine.setProperty("rate", self.DEFAULT_RATE)
-                self._pyttsx3_engine.setProperty("volume", self.DEFAULT_VOLUME)
-                voices = self._pyttsx3_engine.getProperty("voices")
-                for v in voices:
-                    n = v.name.lower()
-                    if (
-                        "german" in n
-                        or "deutsch" in n
-                        or "de-de" in str(v.languages).lower()
-                    ):
-                        self._pyttsx3_engine.setProperty("voice", v.id)
-                        break
+            if self._ensure_pyttsx3_engine():
                 self._backend = "pyttsx3"
                 ok = True
-            except Exception:
+            else:
                 self._startup_errors.append("pyttsx3 backend unavailable")
 
         if not ok:
@@ -467,6 +480,30 @@ class SpeechOutput:
             return "TTS deaktiviert: " + "; ".join(dict.fromkeys(self._startup_errors))
         return "TTS deaktiviert"
 
+    def _ensure_pyttsx3_engine(self) -> bool:
+        if self._pyttsx3_engine is not None:
+            return True
+        try:
+            import pyttsx3
+
+            self._pyttsx3_engine = pyttsx3.init()
+            self._pyttsx3_engine.setProperty("rate", self.DEFAULT_RATE)
+            self._pyttsx3_engine.setProperty("volume", self.DEFAULT_VOLUME)
+            voices = self._pyttsx3_engine.getProperty("voices")
+            for v in voices:
+                n = v.name.lower()
+                if (
+                    "german" in n
+                    or "deutsch" in n
+                    or "de-de" in str(v.languages).lower()
+                ):
+                    self._pyttsx3_engine.setProperty("voice", v.id)
+                    break
+            return True
+        except Exception:
+            self._pyttsx3_engine = None
+            return False
+
     def set_callbacks(
         self, on_start: Optional[Callable] = None, on_end: Optional[Callable] = None
     ) -> None:
@@ -574,9 +611,11 @@ class SpeechOutput:
                 sr = int(sr * _factor)
             sd.play(wav, sr)
             sd.wait()
-        except Exception:
+        except Exception as exc:
+            self._startup_errors.append(f"f5tts runtime failure: {type(exc).__name__}")
             # Degrade gracefully to pyttsx3 if inference fails
-            if self._pyttsx3_engine is not None:
+            if self._ensure_pyttsx3_engine():
+                self._backend = "pyttsx3"
                 self._speak_pyttsx3(req)
 
     def _speak_kokoro(self, req: _SpeechRequest) -> None:

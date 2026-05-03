@@ -401,7 +401,7 @@ def main() -> None:
     args = ap.parse_args()
 
     print("[TRAIN] Infinite training harness starting")
-    print(f"  ticks_limit    : {'∞' if args.ticks == 0 else args.ticks:,}")
+    print(f"  ticks_limit    : {'∞' if args.ticks == 0 else f'{args.ticks:,}'}")
     print(f"  web            : {'yes' if not args.no_web else 'no (offline)'}")
     print(f"  inject_interval: {args.inject_interval}")
     print(f"  save_interval  : {args.save_interval}")

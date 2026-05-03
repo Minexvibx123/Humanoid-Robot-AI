@@ -15,6 +15,34 @@ import os
 import sys
 
 
+def _install_torchaudio_fallback(ref_wav: str) -> None:
+    """Bypass TorchCodec on Windows when torchaudio cannot load local WAV files."""
+    try:
+        import torchaudio
+
+        try:
+            torchaudio.load(ref_wav)
+            return
+        except RuntimeError as exc:
+            if "Could not load libtorchcodec" not in str(exc):
+                raise
+
+        import numpy as np
+        import soundfile as sf
+        import torch
+
+        def _soundfile_load(path, *args, **kwargs):
+            data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+            tensor = torch.from_numpy(np.ascontiguousarray(data.T))
+            return tensor, sample_rate
+
+        torchaudio.load = _soundfile_load
+        print("TorchCodec nicht verfuegbar - verwende soundfile-Fallback fuer torchaudio.load().")
+    except Exception as exc:
+        print(f"FEHLER: torchaudio-Fallback konnte nicht installiert werden: {exc}")
+        sys.exit(3)
+
+
 def _load_reference_text(ref_wav: str, cli_text: str) -> str:
     if cli_text.strip():
         return cli_text.strip()
@@ -48,6 +76,8 @@ ref_wav = os.path.join(os.path.dirname(__file__), "albedo_voice.wav")
 if not os.path.exists(ref_wav):
     print(f"FEHLER: {ref_wav} nicht gefunden.")
     sys.exit(1)
+
+_install_torchaudio_fallback(ref_wav)
 
 ref_text = _load_reference_text(ref_wav, args.ref_text)
 

@@ -58,11 +58,21 @@ if os.path.exists(_VENV_PYTHON) and os.path.abspath(sys.executable) != os.path.a
 
 # ── Load .env (TTS config, voice WAV path, etc.) ─────────────────────────────
 try:
-    from _setup_voice import load_env as _load_env
+    import importlib
 
-    _load_env()
+    _setup_voice = importlib.import_module("_setup_voice")
+    _load_env = getattr(_setup_voice, "load_env", None)
+    if callable(_load_env):
+        _load_env()
+    else:
+        raise ImportError("_setup_voice.load_env missing")
 except Exception:
-    pass
+    try:
+        from dotenv import load_dotenv as _load_dotenv
+
+        _load_dotenv()
+    except Exception:
+        pass
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -12,6 +12,192 @@ Der aktuelle Schwerpunkt liegt auf:
 
 Die wichtigsten Startmodi laufen über `main.py`: GUI, Headless, Eval, Soak und Postfix-Validierung.
 
+## Einrichtung
+
+### 1. Voraussetzungen
+
+- Windows 10/11 wird aktuell am besten unterstützt.
+- Python 3.11 bis 3.14 mit funktionierendem `venv`
+- Git
+- Für Audio/TTS: funktionierendes Ausgabegerät und installierte Windows-Sprachkomponenten für `pyttsx3`
+- Optional für F5-TTS auf Windows: FFmpeg in einer kompatiblen Shared-Build-Variante, falls `torchcodec` verwendet wird
+
+### 2. Repository klonen
+
+```powershell
+git clone <DEIN-REPO-URL>
+cd AI
+```
+
+### 3. Virtuelle Umgebung anlegen
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
+
+### 4. Pakete installieren
+
+```powershell
+pip install -r requirements.txt
+```
+
+### 5. Optionale `.env` anlegen
+
+Das Projekt liest Umgebungsvariablen aus einer `.env`, wenn `python-dotenv` installiert ist.
+
+Beispiel:
+
+```env
+TTS_BACKEND=
+ALBEDO_VOICE_WAV=C:\Users\Minex\AI\albedo_voice.wav
+ALBEDO_VOICE_TEXT=Hier steht das exakte Transkript der Referenzaufnahme.
+ALBEDO_KOKORO_VOICE=af_heart
+ALBEDO_KOKORO_SPEED=0.9
+ALBEDO_KOKORO_LANG=en-us
+
+LLM_ENABLED=0
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=llama3
+LLM_API_KEY=local
+```
+
+Hinweise:
+
+- `TTS_BACKEND=` leer bedeutet automatische Reihenfolge: `f5tts` → `kokoro` → `pyttsx3`
+- Für F5-TTS brauchst du `ALBEDO_VOICE_WAV` plus passendes Transkript (`ALBEDO_VOICE_TEXT` oder `<wav>.txt`)
+- Wenn kein LLM genutzt werden soll, bleibt `LLM_ENABLED=0`
+
+### 6. Erster sicherer Start
+
+Für einen ersten Smoke-Test ohne Kamera, Mikrofon und Web:
+
+```powershell
+python main.py --headless --nocam --nomic --noweb
+```
+
+Wenn das stabil läuft, kannst du die Sensoren schrittweise wieder aktivieren.
+
+### 7. Wichtige Startmodi
+
+```powershell
+python main.py
+python main.py --headless
+python main.py --eval
+python main.py --soak
+python train_harness.py
+```
+
+### 8. TTS einrichten
+
+#### F5-TTS
+
+- Installiert über `requirements.txt`
+- Braucht eine Referenz-WAV plus Transkript
+- Erster Start lädt Modellgewichte aus Hugging Face
+- Unter Windows kann `torchcodec`/FFmpeg problematisch sein; im Projekt ist dafür inzwischen ein `soundfile`-Fallback im Laufzeitpfad eingebaut
+
+#### Kokoro-ONNX
+
+- Offline-Preset-Stimme ohne Voice-Cloning
+- Lädt `kokoro-v1.0.onnx` und `voices-v1.0.bin` beim ersten Start nach `models/kokoro/`
+
+#### pyttsx3
+
+- Letzter Fallback
+- Nutzt die lokal installierten Windows-SAPI-Stimmen
+
+### 9. Häufige Probleme
+
+#### TTS spricht nicht
+
+- Starte zuerst: `python main.py --headless --nocam --nomic --noweb`
+- Achte auf die Startmeldung `[TTS] ...`
+- Prüfe, ob `ALBEDO_VOICE_WAV` und `ALBEDO_VOICE_TEXT` wirklich gesetzt sind
+- Wenn F5-TTS scheitert, sollte automatisch auf `pyttsx3` oder `kokoro` gefallen werden
+
+#### GUI startet nicht
+
+- Prüfe `dearpygui`
+- Starte testweise headless
+
+#### Kamera/Mikrofon machen Probleme
+
+- Mit `--nocam` und/oder `--nomic` isolieren
+- Hardware erst aktivieren, wenn der Headless-Basispfad stabil ist
+
+## Verwendete Pakete
+
+Die folgenden Python-Pakete werden aktuell laut `requirements.txt` verwendet.
+
+### Numerik, Signalverarbeitung, Basis
+
+- `numpy` — numerische Arrays und Grundrechenoperationen
+- `numba` — Beschleunigung numerischer Hotpaths via JIT
+- `scipy` — Signalverarbeitung, Hilfsfunktionen, numerische Verfahren
+- `networkx` — Graphstrukturen für Konzept-/Beziehungsgraphen
+
+### Sensorik, Audio, Sprache
+
+- `opencv-python` — Kamera-Frames und Bildverarbeitung
+- `mediapipe` — Gesichts-, Hand- und Pose-Landmarken
+- `SpeechRecognition` — Mikrofon-/STT-Eingangspfad
+- `sounddevice` — Audioausgabe und Playback
+- `soundfile` — Audio-Dateizugriff, WAV-Lesen/Schreiben
+- `pydub` — Audiokonvertierung und Hilfsverarbeitung
+
+### TTS
+
+- `pyttsx3` — lokaler Windows-SAPI-Fallback
+- `kokoro-onnx` — Offline-TTS mit ONNX-Modell
+- `huggingface_hub` — Download/Caching von TTS- und Modellartefakten
+- `f5-tts` — Zero-Shot Voice-Cloning / hochwertige Offline-TTS
+
+### Web, Retrieval, Online-Wissen
+
+- `requests` — HTTP-Zugriffe
+- `feedparser` — RSS/Atom-Feeds
+- `yt-dlp` — Metadaten/Content-Zugriff für Videoquellen
+- `youtube-transcript-api` — Untertitel/Transkripte von YouTube
+
+### Robotik, GUI, Schnittstellen
+
+- `pyserial` — serielle Kommunikation mit Arduino/Robotik-Hardware
+- `dearpygui` — GUI/Monitoring-Dashboard
+
+### LLM, Konfiguration, externe Dienste
+
+- `openai` — OpenAI-kompatible API-Clients, auch für lokale Endpunkte nutzbar
+- `python-dotenv` — Laden von `.env`-Konfigurationen
+
+## Paketliste aus `requirements.txt`
+
+```text
+numpy>=1.26.0
+numba>=0.58.0
+scipy>=1.12.0
+opencv-python>=4.9.0
+mediapipe>=0.10.0
+SpeechRecognition>=3.10.0
+sounddevice>=0.4.6
+soundfile>=0.12.0
+pyttsx3>=2.90
+kokoro-onnx>=0.4.0
+huggingface_hub>=0.20.0
+f5-tts>=0.1.0
+pydub>=0.25.0
+yt-dlp>=2024.1.0
+networkx>=3.2.0
+requests>=2.31.0
+feedparser>=6.0.0
+youtube-transcript-api>=0.6.0
+pyserial>=3.5
+dearpygui>=1.11.1
+openai>=1.30.0
+python-dotenv>=1.0.1
+```
+
 ## Projektstruktur
 
 ```

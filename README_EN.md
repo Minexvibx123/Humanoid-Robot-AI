@@ -13,6 +13,192 @@ Current focus areas:
 
 Run modes are dispatched via `main.py`: GUI, Headless, Eval, Soak, and Postfix validation.
 
+## Setup
+
+### 1. Prerequisites
+
+- Windows 10/11 is currently the primary supported environment
+- Python 3.11 to 3.14 with working `venv`
+- Git
+- For audio/TTS: a working output device and installed Windows voice components for `pyttsx3`
+- Optional for F5-TTS on Windows: a compatible FFmpeg shared build if `torchcodec` is used
+
+### 2. Clone the repository
+
+```powershell
+git clone <YOUR-REPO-URL>
+cd AI
+```
+
+### 3. Create a virtual environment
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
+
+### 4. Install dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+### 5. Optional `.env` configuration
+
+The project loads environment variables from `.env` when `python-dotenv` is available.
+
+Example:
+
+```env
+TTS_BACKEND=
+ALBEDO_VOICE_WAV=C:\Users\Minex\AI\albedo_voice.wav
+ALBEDO_VOICE_TEXT=Put the exact transcript of the reference clip here.
+ALBEDO_KOKORO_VOICE=af_heart
+ALBEDO_KOKORO_SPEED=0.9
+ALBEDO_KOKORO_LANG=en-us
+
+LLM_ENABLED=0
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=llama3
+LLM_API_KEY=local
+```
+
+Notes:
+
+- Empty `TTS_BACKEND` means automatic priority: `f5tts` → `kokoro` → `pyttsx3`
+- F5-TTS requires both `ALBEDO_VOICE_WAV` and a matching transcript (`ALBEDO_VOICE_TEXT` or `<wav>.txt`)
+- If you do not want an LLM backend, keep `LLM_ENABLED=0`
+
+### 6. First safe startup
+
+For a first smoke test without camera, microphone, or web:
+
+```powershell
+python main.py --headless --nocam --nomic --noweb
+```
+
+If that is stable, re-enable sensors step by step.
+
+### 7. Main run modes
+
+```powershell
+python main.py
+python main.py --headless
+python main.py --eval
+python main.py --soak
+python train_harness.py
+```
+
+### 8. TTS setup
+
+#### F5-TTS
+
+- Installed via `requirements.txt`
+- Requires a reference WAV plus transcript
+- First run downloads model weights from Hugging Face
+- On Windows, `torchcodec`/FFmpeg can fail; this project now includes a `soundfile` fallback in the runtime path
+
+#### Kokoro-ONNX
+
+- Offline preset voice without voice cloning
+- Downloads `kokoro-v1.0.onnx` and `voices-v1.0.bin` into `models/kokoro/` on first run
+
+#### pyttsx3
+
+- Final fallback backend
+- Uses locally installed Windows SAPI voices
+
+### 9. Common issues
+
+#### TTS does not speak
+
+- Start with: `python main.py --headless --nocam --nomic --noweb`
+- Check the startup line `[TTS] ...`
+- Verify that `ALBEDO_VOICE_WAV` and `ALBEDO_VOICE_TEXT` are actually set
+- If F5-TTS fails, the runtime should fall back to `kokoro` or `pyttsx3`
+
+#### GUI does not start
+
+- Check `dearpygui`
+- Test in headless mode first
+
+#### Camera/microphone issues
+
+- Isolate with `--nocam` and/or `--nomic`
+- Only enable hardware after the headless baseline is stable
+
+## Packages Used
+
+The following Python packages are currently used according to `requirements.txt`.
+
+### Numeric, signal processing, core
+
+- `numpy` — numerical arrays and base operations
+- `numba` — JIT acceleration for hot numeric paths
+- `scipy` — signal processing and numerical helpers
+- `networkx` — graph structures for concepts and relationships
+
+### Sensors, audio, speech
+
+- `opencv-python` — camera frames and image processing
+- `mediapipe` — face, hand, and pose landmarks
+- `SpeechRecognition` — microphone/STT input path
+- `sounddevice` — audio playback
+- `soundfile` — reading and writing WAV/audio files
+- `pydub` — audio conversion and helper processing
+
+### TTS
+
+- `pyttsx3` — local Windows SAPI fallback
+- `kokoro-onnx` — offline ONNX-based TTS
+- `huggingface_hub` — model download and caching
+- `f5-tts` — zero-shot voice cloning / high-quality offline TTS
+
+### Web, retrieval, online knowledge
+
+- `requests` — HTTP access
+- `feedparser` — RSS/Atom parsing
+- `yt-dlp` — metadata/content access for video sources
+- `youtube-transcript-api` — YouTube transcript retrieval
+
+### Robotics, UI, interfaces
+
+- `pyserial` — serial communication with Arduino/robot hardware
+- `dearpygui` — GUI/monitoring dashboard
+
+### LLM, config, external services
+
+- `openai` — OpenAI-compatible API client, also usable with local endpoints
+- `python-dotenv` — `.env` loading
+
+## Package List from `requirements.txt`
+
+```text
+numpy>=1.26.0
+numba>=0.58.0
+scipy>=1.12.0
+opencv-python>=4.9.0
+mediapipe>=0.10.0
+SpeechRecognition>=3.10.0
+sounddevice>=0.4.6
+soundfile>=0.12.0
+pyttsx3>=2.90
+kokoro-onnx>=0.4.0
+huggingface_hub>=0.20.0
+f5-tts>=0.1.0
+pydub>=0.25.0
+yt-dlp>=2024.1.0
+networkx>=3.2.0
+requests>=2.31.0
+feedparser>=6.0.0
+youtube-transcript-api>=0.6.0
+pyserial>=3.5
+dearpygui>=1.11.1
+openai>=1.30.0
+python-dotenv>=1.0.1
+```
+
 ## Project Structure
 
 ```
