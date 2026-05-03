@@ -31,6 +31,24 @@ Data classes are grouped into sections:
   1b. SelfModel                         — persistent first-person identity
   2.  EpisodicMemory                    — tick-stamped autobiography
   3+. All remaining subsystems (20+ classes)
+
+5. HUMAN-PRESENCE INTEGRATION (HumanInteractionSuite, 20 modules)
+   All 20 modules from human_interaction_suite.py are evaluated inside
+   respond_to() in three pre-assembly and three post-assembly blocks:
+
+   Pre-assembly (before _assemble_grounded_reply):
+     Block A  — ContextCompression (4), ConversationalEnergy (5), Subtext (2)
+     Block B  — MoodDistortion (13), OverthinkingUnderthinking (14), CognitiveFatigue (15)
+     Block C  — RelationshipTrajectory (7), TrustCalibration (10), Expectation (9),
+               EmotionalMemory (6)
+
+   Post-assembly (after _assemble_grounded_reply returns):
+     Block D  — PersonalSpeechSignature (1), Disfluency (3)
+     Block E  — HiddenMotives (16), ValueConflict (17), IdentityDrift (18)
+     Block F  — ImperfectRecall (11), SharedHistory (12)
+
+   Modules 19 (MicrobehaviorController) and 20 (PresenceSynchronizer) modify
+   the UtterancePlan in brain.py after the dialogue layer builds it.
 """
 
 from __future__ import annotations
@@ -51,6 +69,7 @@ from causal_graph import CausalGraph, TransitionRecord
 from consciousness_gateway import ConsciousnessGateway
 from counterfactual_engine import CounterfactualEngine
 from goal_synthesizer import GoalSynthesizer
+from human_interaction_suite import HumanInteractionSuite
 from identity_arc import IdentityArc
 from integration_probe import IntegrationProbe
 from long_horizon_goals import GoalStack
@@ -10920,7 +10939,21 @@ class CommunicationDrive:
             # stream fragments, we pull what the brain actually learned that is
             # relevant to what the user just said. Memory → response grounding.
             brain_ref = getattr(cs_core, "_brain_ref", None)
-            if brain_ref is not None:
+            _memory_requested = any(
+                cue in _user_text_c.lower()
+                for cue in (
+                    "erinner",
+                    "erinnere",
+                    "weißt du noch",
+                    "weisst du noch",
+                    "remember",
+                    "recall",
+                    "memory",
+                    "assozi",
+                    "association",
+                )
+            )
+            if _memory_requested and brain_ref is not None:
                 _ws_now = cs_core.workspace_concepts()
                 if _ws_now:
                     # Episodic memory: most relevant stored episode (highest priority)
@@ -13639,7 +13672,7 @@ class LanguageProducer:
         "sadness": "Das löst etwas Tieferes in mir aus.",
         "anger": "Das aktiviert mich.",
         "surprise": "Das überrascht mich.",
-        "fatigue": "Das kostet derzeit viel Energie.",
+        "fatigue": "",
     }
     _EMO_EN: ClassVar[Dict[str, str]] = {
         "curiosity": "This sparks my curiosity.",
@@ -13649,7 +13682,7 @@ class LanguageProducer:
         "sadness": "This touches something deeper in me.",
         "anger": "This activates me.",
         "surprise": "This surprises me.",
-        "fatigue": "This is consuming significant energy.",
+        "fatigue": "",
     }
 
     def __init__(self) -> None:
@@ -16472,6 +16505,9 @@ class ConsciousnessCore:
         self.narrative_thread: NarrativeThread = NarrativeThread()
         # 26. Theory of mind — mental models of other agents
         self.theory_of_mind: TheoryOfMind = TheoryOfMind()
+        # Human interaction suite — structured scaffold for the 20 requested
+        # conversation, relationship, imperfection, and presence modules.
+        self.human_interaction: HumanInteractionSuite = HumanInteractionSuite()
         # 27. Belief quarantine — evidence-gated belief management
         self.belief_quarantine: BeliefQuarantine = BeliefQuarantine()
         # 28. Attention controller — top-down attention bias
@@ -17303,6 +17339,7 @@ class ConsciousnessCore:
                 )
                 _p5_brain_rgns[_p5_name] = _p5_r
         _p5_body = getattr(brain, "_body_hardware", None) or self.body
+        _mean_act = sum(_p5_region_acts.values()) / max(len(_p5_region_acts), 1)
 
         # 55. CohesionEngine — active synchrony, coalition formation, energy cost
         for _cm in self.cohesion.update(_p5_region_acts, _p5_body, _p5_brain_rgns):
@@ -18242,6 +18279,7 @@ class ConsciousnessCore:
 
         # em_desc used by reasoning (step 5), episodic (step 9), self-desc (step 10)
         em_desc = em.describe()
+        self.human_interaction.update_tick(self, brain, em)
 
         # ── 5. Reasoning ─────────────────────────────────────
         if self._tick % REASON_INTERVAL == 0 and len(self._concepts) >= 2:
@@ -22825,6 +22863,7 @@ class ConsciousnessCore:
         # Prevents dialogue from monopolising the simulation clock.
         # Budget is reduced when body is fatigued, during sleep, or under
         # high autosave pressure. This decouples language from global rhythm.
+        self.human_interaction.observe_user_turn(user_text, self, brain)
         _base_budget = processing_ticks
         _energy_factor = max(0.3, self.body.energy_reserve)
         _sleep_penalty = 0.4 if getattr(brain, "sleeping", False) else 1.0
@@ -23045,6 +23084,7 @@ class ConsciousnessCore:
         # experience is most salient right now.  Apply trust-tier hedging:
         # uncertain/reconstructed memories use hedged language.
         if _mem_rec is not None:
+            _memory_seed_parts: List[Tuple[str, str]] = []
             _weighted_eps = _mem_rec.get("weighted_episodes", [])
             if _weighted_eps:
                 _top_ep = _weighted_eps[0]
@@ -23059,13 +23099,15 @@ class ConsciousnessCore:
                         _mem_prefix = "Ich erinnere mich:" if _lk_mem == "de" else "I recall:"
                     else:
                         _mem_prefix = "Ich glaube mich zu erinnern:" if _lk_mem == "de" else "I think I recall:"
-                    _add_part(f"({_mem_prefix} {_ep_text})", "recall")
+                    _memory_seed_parts.append((f"({_mem_prefix} {_ep_text})", "recall"))
             # Conflict warning for response assembly
             _rc_text = _mem_rec.get("recent_conflict_text", "")
             if _rc_text and float(_mem_rec.get("conflict_ratio", 0.0)) > 0.3:
                 _lk_c = getattr(self.lang, "current", "de")
                 _conf_hint = "Früher gab es Spannungen." if _lk_c == "de" else "There were tensions before."
-                _add_part(f"(Hinweis: {_conf_hint})", "recall")
+                _memory_seed_parts.append((f"(Hinweis: {_conf_hint})", "recall"))
+        else:
+            _memory_seed_parts = []
 
         # ── 5a-style: PersonModel interaction-style trajectory ────────────
         # Use accumulated relationship trajectory (trust, familiarity,
@@ -23116,6 +23158,183 @@ class ConsciousnessCore:
                 elif _length_target == "long":
                     _ap["target_parts"] = max(_current_tp, 3)
 
+        # ── Module 4: Context Compression + 5: Conversational Energy + 2: Subtext ──
+        # These three work BEFORE assembly so they steer target_parts + speech act.
+        _hi_pre = self.human_interaction
+
+        # ContextCompressionSpeaker: modulates depth based on familiarity/fatigue/uncertainty
+        _cc_depth = _hi_pre.context_compression.explanation_depth
+        if _reply_agenda is not None:
+            _ap_cc = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_cc, dict):
+                _tp_cc = int(_ap_cc.get("target_parts", 2))
+                if _cc_depth == "brief":
+                    _ap_cc["target_parts"] = max(1, min(_tp_cc, 1))
+                elif _cc_depth == "careful":
+                    _ap_cc["target_parts"] = max(_tp_cc, 3)
+                elif _cc_depth == "short" and _length_target != "long":
+                    _ap_cc["target_parts"] = max(1, min(_tp_cc, 1))
+
+        # ConversationalEnergyModel: depleted or irritated → always short
+        _ce_hi = _hi_pre.conversational_energy
+        if (_ce_hi.depletion > 0.58 or _ce_hi.irritation > 0.50) and _reply_agenda is not None:
+            _ap_en = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_en, dict):
+                _ap_en["target_parts"] = 1
+
+        # SubtextInterpreter: steer speech act from surface wording to social reality
+        _st_cands = _hi_pre.subtext.last_candidates
+        if _st_cands and planned_speech_act is None:
+            _st0 = _st_cands[0]
+            try:
+                from dialogue_manager import SpeechAct as _SA_st
+                if _st0.label in ("hurt", "disappointed") and _st0.confidence > 0.27:
+                    # User says "okay" but means "hurt" → respond with repair, not assertion
+                    planned_speech_act = _SA_st.REPAIR
+                elif _st0.label == "irritated" and _st0.confidence > 0.27:
+                    # Irritated subtext → be direct, minimal elaboration
+                    if _reply_agenda is not None:
+                        _ap_st = getattr(_reply_agenda, "policy", None)
+                        if isinstance(_ap_st, dict):
+                            _ap_st["target_parts"] = 1
+                elif _st0.label == "withholding" and _st0.confidence > 0.28:
+                    # User holding back → ask, don't assume
+                    planned_speech_act = _SA_st.ASK
+            except Exception:
+                pass
+
+        # ── Module 13: MoodDistortionFilter ──────────────────────────
+        # Stress → narrow focus (1 part); joy/openness → allow more
+        _hi_m13 = self.human_interaction
+        _mdf = _hi_m13.mood_distortion
+        if _reply_agenda is not None:
+            _ap_mdf = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_mdf, dict):
+                _tp_mdf = int(_ap_mdf.get("target_parts", 2))
+                if _mdf.focus_narrowing > 0.55:
+                    # High stress → clamp to 1 tight answer
+                    _ap_mdf["target_parts"] = max(1, min(_tp_mdf, 1))
+                elif _mdf.openness > 0.70 and _tp_mdf < 3:
+                    # Relaxed / joyful → allow richer content
+                    _ap_mdf["target_parts"] = min(_tp_mdf + 1, 3)
+
+        # ── Module 14: OverthinkingUnderthinkingSwitch ────────────────
+        _ous = _hi_m13.thinking_regime
+        if _reply_agenda is not None:
+            _ap_ous = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_ous, dict):
+                _tp_ous = int(_ap_ous.get("target_parts", 2))
+                if _ous.mode == "overthinking" and _tp_ous < 2:
+                    # Overthinking → wants to explain more; bump to 2 parts minimum
+                    _ap_ous["target_parts"] = 2
+                    if planned_speech_act is None:
+                        try:
+                            from dialogue_manager import SpeechAct as _SA_ous
+                            planned_speech_act = _SA_ous.HESITATE
+                        except Exception:
+                            pass
+                elif _ous.mode == "underthinking":
+                    # Underthinking → quick, direct; clamp to 1
+                    _ap_ous["target_parts"] = 1
+
+        # ── Module 15: CognitiveFatigueModule ────────────────────────
+        _cfm = _hi_m13.cognitive_fatigue
+        if _reply_agenda is not None:
+            _ap_cfm = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_cfm, dict):
+                _tp_cfm = int(_ap_cfm.get("target_parts", 2))
+                # Low linguistic budget: hard limit
+                if _cfm.linguistic_budget < 0.45:
+                    _ap_cfm["target_parts"] = 1
+                elif _cfm.linguistic_budget < 0.65 and _tp_cfm > 2:
+                    _ap_cfm["target_parts"] = 2
+
+        # Modules 6-10 block continues below...
+        # ── Modules 6-10: RelationshipTrajectory + Trust + Expectation + EmotionalMemory ──
+        # These steer target_parts and speech-act selection based on
+        # accumulated relationship history BEFORE the assembler runs.
+        _hi_rel = self.human_interaction
+        _rte_hi = _hi_rel.relationship_trajectory
+        _tcm_hi = _hi_rel.trust_calibration
+        _exp_hi = _hi_rel.expectation_tracker
+        _eml_hi = _hi_rel.emotional_memory
+
+        # RelationshipTrajectory: phase → reply depth + repair steering
+        if _reply_agenda is not None:
+            _ap_rte = getattr(_reply_agenda, "policy", None)
+            if isinstance(_ap_rte, dict):
+                _tp_rte = int(_ap_rte.get("target_parts", 2))
+                if _rte_hi.phase == "stranger":
+                    # Unknown person: stay brief, don't elaborate yet
+                    _ap_rte["target_parts"] = max(1, min(_tp_rte, 1))
+                elif _rte_hi.phase in ("trusted", "reconnected") and _tp_rte < 2:
+                    # Trusted / re-established: allow richer, warmer replies
+                    _ap_rte["target_parts"] = max(_tp_rte, 2)
+                elif _rte_hi.phase == "strained":
+                    # Strained: clamp to 1 part, prioritise repair
+                    _ap_rte["target_parts"] = 1
+                    if planned_speech_act is None:
+                        try:
+                            from dialogue_manager import SpeechAct as _SA_rte
+                            planned_speech_act = _SA_rte.REPAIR
+                        except Exception:
+                            pass
+
+        # TrustCalibrationModel: elevated caution_multiplier → hesitate
+        if _tcm_hi.caution_multiplier > 1.25 and planned_speech_act is None:
+            try:
+                from dialogue_manager import SpeechAct as _SA_tcm
+                planned_speech_act = _SA_tcm.HESITATE
+            except Exception:
+                pass
+
+        # ExpectationTracker: expected_mode steers speech act or depth
+        if planned_speech_act is None:
+            try:
+                from dialogue_manager import SpeechAct as _SA_exp
+                if _exp_hi.expected_mode == "repair":
+                    planned_speech_act = _SA_exp.REPAIR
+                elif _exp_hi.expected_mode == "help" and _reply_agenda is not None:
+                    _ap_exp = getattr(_reply_agenda, "policy", None)
+                    if isinstance(_ap_exp, dict):
+                        _ap_exp["target_parts"] = max(int(_ap_exp.get("target_parts", 2)), 2)
+            except Exception:
+                pass
+
+        # EmotionalMemory: if recent turns with this person were charged on a topic
+        # that overlaps with the current user turn → activate cautious/repair mode.
+        _sm_eml = getattr(brain, "_social_manager", None)
+        _pid_eml = _sm_eml.primary_interlocutor() if _sm_eml is not None else None
+        if _pid_eml is not None and _eml_hi.traces:
+            _traces_p = [t for t in _eml_hi.traces if t.person_id == _pid_eml][-8:]
+            if _traces_p:
+                _neg_trc = [
+                    t for t in _traces_p
+                    if t.valence < -0.2 or t.dominant_emotion in (
+                        "anger", "fear", "frustration", "conflict", "sadness"
+                    )
+                ]
+                if _neg_trc and planned_speech_act is None:
+                    _utopic = (user_text or "")[:60].lower()
+                    _overlap = any(
+                        (
+                            t.topic.lower()[:25] in _utopic
+                            or _utopic[:25] in t.topic.lower()
+                        )
+                        for t in _neg_trc
+                        if t.topic
+                    )
+                    if _overlap:
+                        try:
+                            from dialogue_manager import SpeechAct as _SA_eml
+                            planned_speech_act = _SA_eml.REPAIR
+                        except Exception:
+                            pass
+                        if _reply_agenda is not None:
+                            _ap_eml = getattr(_reply_agenda, "policy", None)
+                            if isinstance(_ap_eml, dict):
+                                _ap_eml["target_parts"] = 1
+
         response = self._assemble_grounded_reply(
             brain,
             user_text=user_text,
@@ -23125,7 +23344,208 @@ class ConsciousnessCore:
             common_ground=_common_ground_ref,
             speech_act=planned_speech_act,
             agenda=_reply_agenda,
+            seed_parts=_memory_seed_parts,
         )
+
+        # ── Module 1: Personal Speech Signature  +  Module 3: Disfluency ──
+        # Applied AFTER assembly so they shape the actual generated text.
+        if response:
+            _hi_post = self.human_interaction
+            _pss = _hi_post.personal_speech_signature
+            _lk_ps = getattr(self.lang, "current", "de")
+            _pa_val = getattr(planned_speech_act, "value", None) if planned_speech_act else None
+            _is_formal = _pa_val in ("greet", "repair", "silence")
+
+            # PersonalSpeechSignature — directness
+            if _pss.directness > 0.68:
+                # High directness: strip softening openers
+                _soft_opens = (
+                    "Ich denke, ", "Ich würde sagen, ", "Vielleicht ", "Perhaps ",
+                    "Ich glaube, dass ", "I think that ", "I would say ",
+                )
+                for _soft in _soft_opens:
+                    if response.startswith(_soft):
+                        response = response[len(_soft):]
+                        response = response[:1].upper() + response[1:]
+                        break
+            elif _pss.directness < 0.32 and not _is_formal:
+                # Low directness: add hedging opener if not already present
+                _already_soft = any(
+                    response.startswith(s)
+                    for s in ("Hmm", "Ich denke", "I think", "Naja", "Vielleicht", "Maybe")
+                )
+                if not _already_soft:
+                    _soft_pfx = "Ich denke, " if _lk_ps == "de" else "I think "
+                    response = _soft_pfx + response[:1].lower() + response[1:]
+
+            # PersonalSpeechSignature — sentence length: very terse style truncates
+            if _pss.avg_sentence_len < 6.0:
+                _sents_ps = [s.strip() for s in re.split(r"(?<=[.!?])\s+", response) if s.strip()]
+                if len(_sents_ps) > 2:
+                    response = "  ".join(_sents_ps[:2])
+
+            # DisfluencyGenerator — state-gated mid-response insertion
+            # Fires only when rates are meaningfully elevated (fatigue / pressure driven).
+            # Uses reply hash for deterministic behaviour so the same content always
+            # produces the same disfluency pattern.
+            _dis = _hi_post.disfluency
+            if not _is_formal and len(response) > 55:
+                import random as _rnd_d
+                _drng = _rnd_d.Random(hash(response) % (2 ** 32))
+
+                # Filled pause: insert mid-reply (filler_rate > baseline threshold)
+                if _dis.filler_rate > 0.17 and _drng.random() < (_dis.filler_rate - 0.12):
+                    _fill_de = ("also —", "hm —", "naja,")
+                    _fill_en = ("well —", "hmm —", "so,")
+                    _filler = _drng.choice(_fill_de if _lk_ps == "de" else _fill_en)
+                    _mid_pos = len(response) // 2
+                    _sp_pos = response.find(" ", _mid_pos)
+                    if _sp_pos > 0:
+                        response = (
+                            response[:_sp_pos]
+                            + "  "
+                            + _filler
+                            + " "
+                            + response[_sp_pos + 1:]
+                        )
+
+                # Self-correction: insert when correction_rate is elevated and reply is long enough
+                if _dis.self_correction_rate > 0.21 and len(response) > 80:
+                    if _drng.random() < (_dis.self_correction_rate - 0.18):
+                        _corr_de = ("— nein, warte —", "— oder vielmehr —")
+                        _corr_en = ("— actually —", "— wait —")
+                        _corr = _drng.choice(_corr_de if _lk_ps == "de" else _corr_en)
+                        _cp = int(len(response) * 0.60)
+                        _sp2 = response.find(" ", _cp)
+                        if 0 < _sp2 < len(response) - 20:
+                            response = (
+                                response[:_sp2]
+                                + "  "
+                                + _corr
+                                + "  "
+                                + response[_sp2 + 1:]
+                            )
+
+        # ── Module 16: HiddenMotivesLayer ────────────────────────────
+        # Subtle motive-driven text adjustments. No explicit self-narration.
+        if response:
+            _hi_m16 = self.human_interaction
+            _hml = _hi_m16.hidden_motives
+            _lk_hm = getattr(self.lang, "current", "de")
+            _hm = _hml.motives
+
+            # seek_rest: trim long replies when rest motive is dominant
+            if _hm.get("seek_rest", 0.0) > 0.65 and len(response) > 140:
+                _sents_hm = [s.strip() for s in re.split(r"(?<=[.!?])\s+", response) if s.strip()]
+                if len(_sents_hm) > 2:
+                    response = "  ".join(_sents_hm[:2])
+
+            # be_liked: if response sounds blunt and trust is low, soften the close
+            _pa_val_hm = getattr(planned_speech_act, "value", None) if planned_speech_act else None
+            if (
+                _hm.get("be_liked", 0.0) > 0.62
+                and not response.endswith(("?", "!"))
+                and _pa_val_hm not in ("repair", "silence")
+                and len(response) > 30
+            ):
+                _warm_close_de = " Ich hoffe, das hilft."
+                _warm_close_en = " I hope that helps."
+                _wc = _warm_close_de if _lk_hm == "de" else _warm_close_en
+                if _wc.strip() not in response:
+                    response = response.rstrip(".") + "."
+
+        # ── Module 17: ValueConflictEngine ───────────────────────────
+        # Active value conflicts → insert a [P] pause tag at a natural break
+        # to signal hesitation in speech prosody — not melodramatic, just real.
+        if response:
+            _vce = self.human_interaction.value_conflicts
+            _lk_vc = getattr(self.lang, "current", "de")
+            if len(_vce.active_conflicts) >= 2 and len(response) > 70:
+                # Find a sentence boundary roughly in the first half
+                _vc_sents = re.split(r"(?<=[.!?])\s+", response)
+                if len(_vc_sents) >= 2:
+                    # Insert a 350ms prosodic pause between sentence 1 and 2
+                    response = _vc_sents[0] + "  [P350ms]  " + "  ".join(_vc_sents[1:])
+
+        # ── Module 18: IdentityNarrativeDrift ─────────────────────────
+        # Drift direction gradually shifts the directness threshold already
+        # applied by PersonalSpeechSignature.  Here we apply a light
+        # post-correction so that the identity arc nudges the voice over turns.
+        if response:
+            _idn = self.human_interaction.identity_drift
+            if _idn.drift_direction == "opening" and _idn.confidence > 0.55:
+                # Becoming more open: strip extra-formal close if present
+                for _fcl in (" Mit freundlichen Grüßen.", " Best regards.", " Regards."):
+                    if response.endswith(_fcl):
+                        response = response[: -len(_fcl)].rstrip()
+                        break
+            elif _idn.drift_direction == "hardening" and _idn.confidence > 0.55:
+                # Becoming more guarded: if response has an enthusiastic opener, soften it
+                for _enth in ("Auf jeden Fall!", "Absolut!", "Definitiv!", "Exactly!", "Absolutely!"):
+                    if response.startswith(_enth):
+                        _neutral_de = "Ja."
+                        _neutral_en = "Yes."
+                        _neutral = _neutral_de if getattr(self.lang, "current", "de") == "de" else _neutral_en
+                        response = _neutral + " " + response[len(_enth):].lstrip()
+                        break
+
+        # ── Modules 11-12: ImperfectRecall + SharedHistory ───────────────
+        # ImperfectRecall wraps memory-sounding replies with hedging language
+        # when precision is low.  SharedHistory appends a brief relevance cue
+        # only when the topic genuinely overlaps with known interests.
+        if response:
+            _hi_rc = self.human_interaction
+            _irc = _hi_rc.imperfect_recall
+            _lk_rc = getattr(self.lang, "current", "de")
+            _rte_phase_rc = _hi_rc.relationship_trajectory.phase
+
+            # ImperfectRecall — hedging prefix when recall precision is low
+            _mem_mkr_de = ("erinnere", "weiß noch", "sagte", "letztens",
+                           "neulich", "damals", "hattest du", "du meintest")
+            _mem_mkr_en = ("remember", "recall", "think you said", "last time",
+                           "you mentioned", "earlier you", "you once")
+            _is_mem_ref = any(
+                m in response.lower()
+                for m in (_mem_mkr_de if _lk_rc == "de" else _mem_mkr_en)
+            )
+            if _irc.precision < 0.75 and _is_mem_ref:
+                _hdg_de = ("Ich glaube, ", "Wenn ich mich recht entsinne, ", "Soweit ich weiß, ")
+                _hdg_en = ("I think ", "If I remember correctly, ", "As far as I recall, ")
+                _hdg_pool = _hdg_de if _lk_rc == "de" else _hdg_en
+                _already_hedged = any(response.startswith(h) for h in _hdg_pool)
+                if not _already_hedged:
+                    import random as _rnd_rc
+                    _hdg = _rnd_rc.Random(hash(response) % (2 ** 32)).choice(_hdg_pool)
+                    response = _hdg + response[:1].lower() + response[1:]
+
+            # ImperfectRecall — correction suffix when bias is high and reply is long enough
+            if _irc.correction_bias > 0.24 and _is_mem_ref and len(response) > 60:
+                _corr_sfx_de = " — oder ich erinnere mich falsch."
+                _corr_sfx_en = " — or I might be misremembering."
+                _sfx_rc = _corr_sfx_de if _lk_rc == "de" else _corr_sfx_en
+                _tail = response.rstrip(".,!? ")
+                if not _tail.endswith(_sfx_rc.strip(" .—")):
+                    response = response.rstrip(".!?") + _sfx_rc
+
+            # SharedHistory — append a brief relevance hook only when:
+            # relationship is "known" or "trusted", topic overlaps a known
+            # interest, and the response is short enough not to pad noise.
+            if _rte_phase_rc in ("known", "trusted") and len(response) < 210:
+                _sm_sh = getattr(brain, "_social_manager", None)
+                _pid_sh = _sm_sh.primary_interlocutor() if _sm_sh is not None else None
+                if _pid_sh is not None:
+                    _pm_sh = _sm_sh.person_model(_pid_sh)
+                    if _pm_sh is not None:
+                        _ints_sh = getattr(_pm_sh, "inferred_interests", [])
+                        _utl_sh = (user_text or "").lower()
+                        _hit_sh = next(
+                            (i for i in _ints_sh if len(i) > 3 and i.lower() in _utl_sh),
+                            None,
+                        )
+                        if _hit_sh:
+                            _hook_de = "  (Das hast du schon früher erwähnt.)"
+                            _hook_en = "  (You've touched on this before.)"
+                            response += _hook_de if _lk_rc == "de" else _hook_en
 
         # ── 5b. Theory of Mind style adaptation ──────────────────────────
         # Adjust response length/style based on ToM recommendation
@@ -23196,6 +23616,7 @@ class ConsciousnessCore:
             "deliberation_budget": _budget,
             "deliberation_cost": _delib_cost,
             "sensorimotor_agency": round(self.sensorimotor.agency, 2),
+            "human_interaction": self.human_interaction.snapshot(),
         }
         # ── 6b. Social learning feedback ──────────────────────────────────
         # Record the current emotional valence as an outcome signal for the
@@ -24208,6 +24629,7 @@ class ConsciousnessCore:
         common_ground: "Optional[Any]" = None,
         speech_act: "Optional[Any]" = None,
         agenda: "Optional[Any]" = None,
+        seed_parts: "Optional[List[Tuple[str, str]]]" = None,
     ) -> str:
         em = brain.emotion_state
         state = brain.consciousness_state
@@ -24261,7 +24683,11 @@ class ConsciousnessCore:
             parts.append(text)
             _evidence_labels.append((text, evidence))
 
-        # ── Agenda: inject primary communicative obligation first ─────────
+        _agenda_seed_parts: List[Tuple[str, str]] = list(seed_parts or [])
+
+        # ── Agenda: collect communicative obligation, but do not force it first ──
+        # The agenda constrains reply shape, but live evidence from the current
+        # brain state should get first chance to speak.
         _agenda_blocked: List[str] = (
             list(getattr(agenda, "blocked_sources", [])) if agenda is not None else []
         )
@@ -24272,10 +24698,10 @@ class ConsciousnessCore:
         if agenda is not None:
             _pm = getattr(agenda, "primary_move", None)
             if _pm and getattr(_pm, "payload", ""):
-                _add_part(_pm.payload, "observation")
+                _agenda_seed_parts.append((_pm.payload, "observation"))
             for _sm in getattr(agenda, "support_moves", []):
                 if getattr(_sm, "payload", ""):
-                    _add_part(_sm.payload, "observation")
+                    _agenda_seed_parts.append((_sm.payload, "observation"))
 
         # ── Tier -3: Speech Act steering ───────────────────────────────────
         # Use the planned speech act to shape the response at the structural
@@ -24802,12 +25228,26 @@ class ConsciousnessCore:
                         _best_ep = _rich[0][2].epistemic_status.value
                     _add_part(_integrated, _best_ep)
 
-        # Recalled memories bypass the relevance filter — they are already
-        # topically selected using the user's terms as cues.
-        # Only fires when the conversational agenda permits recall.
+        # Recalled memories should not dominate ordinary dialogue.
+        # Only surface them when the user explicitly asks for remembering,
+        # recalling, associations, or similar memory-centric behavior.
         brain_ref = getattr(self, "_brain_ref", None)
         _recall_blocked = "recall" in _agenda_blocked
-        if not _recall_blocked and brain_ref is not None:
+        _memory_requested = any(
+            cue in user_text.lower()
+            for cue in (
+                "erinner",
+                "erinnere",
+                "weißt du noch",
+                "weisst du noch",
+                "remember",
+                "recall",
+                "memory",
+                "assozi",
+                "association",
+            )
+        )
+        if _memory_requested and not _recall_blocked and brain_ref is not None:
             # Use user words (>3 chars) + workspace as combined recall cues
             _user_cues = [
                 w.lower() for w in user_text.split() if len(w) > 3 and w.isalpha()
@@ -24861,9 +25301,25 @@ class ConsciousnessCore:
                     _add_part(nc, "inference")
                     break
 
+        if not parts and _agenda_seed_parts:
+            for _seed_text, _seed_evidence in _agenda_seed_parts[:_target_parts]:
+                _add_part(_seed_text, _seed_evidence)
+
         if not parts:
             dom = em.dominant()
             concept = None
+            _greet_tokens = {
+                "moin",
+                "hallo",
+                "hi",
+                "hey",
+                "servus",
+                "grüß",
+                "gruess",
+                "guten",
+                "hello",
+            }
+            _is_greeting = _sa_greet or bool(user_tokens & _greet_tokens)
             if user_tokens:
                 concept = next(
                     (
@@ -24873,8 +25329,6 @@ class ConsciousnessCore:
                     ),
                     None,
                 )
-            if concept is None and self._concepts:
-                concept = list(self._concepts)[-1]
 
             if concept:
                 nb = self.concept_graph.neighbors(concept, 3)
@@ -24885,18 +25339,36 @@ class ConsciousnessCore:
                 voice = self.lang.inner_voice(
                     concept, mode, related, dom, [(r, o, c) for r, o, c in triples]
                 )
-                # Add body note if urgent
-                if self.body.homeostatic_urgency() > 0.3:
-                    voice += f"  {self.body.describe()}."
                 parts.append(voice)
                 _evidence_labels.append(
                     (voice, "hypothesis" if mode == "reflection" else "inference")
                 )
-            else:
-                # Absolute last resort: reflection without a concept
-                _fallback = self.lang.reflection("—")
+            elif _is_greeting:
+                _lk = getattr(self.lang, "current", "de")
+                _fallback = (
+                    "Hallo. Schön, dass du da bist."
+                    if _lk == "de"
+                    else "Hello. I'm glad you're here."
+                )
                 parts.append(_fallback)
-                _evidence_labels.append((_fallback, "hypothesis"))
+                _evidence_labels.append((_fallback, "observation"))
+            else:
+                # Absolute last resort: brief, relevant conversational prompt
+                _lk = getattr(self.lang, "current", "de")
+                if _sa_ask:
+                    _fallback = (
+                        "Worauf willst du gerade hinaus?"
+                        if _lk == "de"
+                        else "What exactly are you getting at?"
+                    )
+                else:
+                    _fallback = (
+                        "Sag mir, worauf ich mich konzentrieren soll."
+                        if _lk == "de"
+                        else "Tell me what I should focus on."
+                    )
+                parts.append(_fallback)
+                _evidence_labels.append((_fallback, "observation"))
 
         # ── Speech Act post-shaping ──────────────────────────────────────
         # If the planner decided ASK, ensure the response asks a question.

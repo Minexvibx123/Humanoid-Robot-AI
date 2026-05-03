@@ -213,6 +213,14 @@ class FastMonitor:
         self._pending_user_text = ""
         self._social_event_log: collections.deque[str] = collections.deque(maxlen=200)
         self._spatial_debug_lines: collections.deque[str] = collections.deque(maxlen=40)
+        self._last_refresh: Dict[str, float] = {}
+
+    def _refresh_due(self, key: str, interval_s: float, now: float) -> bool:
+        last = self._last_refresh.get(key, 0.0)
+        if now - last >= interval_s:
+            self._last_refresh[key] = now
+            return True
+        return False
 
     def build(self) -> None:
         dpg.create_context()
@@ -1994,18 +2002,21 @@ class FastMonitor:
         )
 
     def update(self) -> None:
+        now = time.perf_counter()
         self._sync_viewport_layout()
         while not _INPUT_QUEUE.empty():
             try:
                 self._handle_input(_INPUT_QUEUE.get_nowait())
             except queue.Empty:
                 break
-        if self._frame_times and (time.perf_counter() - self._frame_times[-1]) > 0.04:
+        if self._frame_times and (now - self._frame_times[-1]) > 0.04:
             self._send_current_head_pose()
             self._frame_times.clear()
         self._sync_controls()
-        self._update_status()
-        self._update_conversation()
+        if self._refresh_due("status", 0.10, now):
+            self._update_status()
+        if self._refresh_due("conversation", 0.08, now):
+            self._update_conversation()
         # DPG 2.x: get_value on a tab_bar returns an integer UUID, not the tag string.
         # Resolve the alias so all comparisons below work correctly.
         _tab_id = dpg.get_value("main_tabs")
@@ -2013,25 +2024,27 @@ class FastMonitor:
             active_tab = dpg.get_item_alias(_tab_id) if _tab_id else None
         except Exception:
             active_tab = None
-        if active_tab in (None, "camera_tab"):
+        if active_tab is None:
+            active_tab = "camera_tab"
+        if active_tab == "camera_tab" and self._refresh_due("camera", 1.0 / 15.0, now):
             self._update_camera()
-        if active_tab in (None, "anatomy_tab"):
+        if active_tab == "anatomy_tab" and self._refresh_due("anatomy", 1.0 / 8.0, now):
             self._update_anatomy()
-        if active_tab in (None, "spatial_tab"):
+        if active_tab == "spatial_tab" and self._refresh_due("spatial", 1.0 / 8.0, now):
             self._update_spatial()
-        if active_tab in (None, "synapses_tab"):
+        if active_tab == "synapses_tab" and self._refresh_due("synapses", 0.50, now):
             self._update_synapses()
-        if active_tab == "social_tab":
+        if active_tab == "social_tab" and self._refresh_due("social", 0.25, now):
             self._update_social()
-        if active_tab == "episodes_tab":
+        if active_tab == "episodes_tab" and self._refresh_due("episodes", 0.35, now):
             self._update_episodes()
-        if active_tab == "skills_tab":
+        if active_tab == "skills_tab" and self._refresh_due("skills", 0.35, now):
             self._update_skills()
-        if active_tab == "concepts_tab":
+        if active_tab == "concepts_tab" and self._refresh_due("concepts", 0.35, now):
             self._update_concepts()
-        if active_tab == "kognition_tab":
+        if active_tab == "kognition_tab" and self._refresh_due("kognition", 0.25, now):
             self._update_kognition()
-        if active_tab == "systemik_tab":
+        if active_tab == "systemik_tab" and self._refresh_due("systemik", 0.35, now):
             self._update_systemik()
 
     def run(self) -> int:

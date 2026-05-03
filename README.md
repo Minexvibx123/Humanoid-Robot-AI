@@ -1,12 +1,25 @@
-# Neural Consciousness – Projektzusammenfassung
+# Humanoid Robot AI – Projektübersicht
+
+Dieses Repository ist kein reiner "Neural-Consciousness"-Prototyp mehr, sondern ein tick-getriebenes Humanoid-/Social-Robot-System mit kognitivem Kern, Weltmodell, Dialogplanung, verkörperten Motor-Cues und mehreren Laufmodi.
+
+Der aktuelle Schwerpunkt liegt auf:
+- einer zentralen Brain-Orchestrierung in `brain.py`
+- sozialer und verkörperter Interaktion über `social_manager.py`, `dialogue_manager.py` und `task_executive.py`
+- offlinefähiger Sprachausgabe über F5-TTS, Kokoro-ONNX und pyttsx3
+- abgesicherten Validierungspfaden über `eval_harness.py`, `soak_harness.py`, `post_fix_harness.py` und `acceptance_eval.py`
+
+Die wichtigsten Startmodi laufen über `main.py`: GUI, Headless, Eval, Soak und Postfix-Validierung.
 
 ## Projektstruktur
 
 ```
 AI/
-├── main.py               ← Start hier: DearPyGui-GUI + Brain-Startloop
+├── main.py               ← Zentrale Einstiegsschicht für GUI, Headless, Eval, Soak, Postfix
 ├── brain.py              ← Zentraler Orchestrator, Simulations-Takt, Plastizität
 ├── consciousness.py      ← Bewusstseinssystem (20+ Subsysteme, s.u.)
+├── dialogue_manager.py   ← UtterancePlan, Turn-Taking-nahe Dialogplanung
+├── speech_output.py      ← TTS-Pipeline: F5-TTS → Kokoro-ONNX → pyttsx3
+├── llm_adapter.py        ← LLM-Kontextaufbau, Validierung, Prompting
 ├── emotion.py            ← 8D-Emotionsmaschine inkl. RPE (Dopamin-Gating)
 ├── neuron.py             ← Leaky-Integrate-and-Fire Neuron
 ├── synapse.py            ← STDP-Synapse mit Hebbian-Plastizität
@@ -37,12 +50,14 @@ AI/
 ├── belief_quarantine.py  ← Isolation widersprüchlicher Überzeugungen
 ├── attention_control.py  ← Top-down Aufmerksamkeitssteuerung
 ├── long_horizon_goals.py ← Ziel-Stack für langfristige Planung (GoalStack)
-├── lexicons_de.py        ← Deutsch/Englisch Lexikon für STDP-Vokabular
-│
+├── lexicons_de.py        ← Deutsch/Englisch Lexikon für STDP-Vokabular│
+├── ── Menschlichkeits-Schicht ───────────────────────────────────
+├── human_interaction_suite.py ← 20 Menschlichkeits-Module (Sprache, Beziehung, Präsenz)│
 ├── ── Tests & Tools ─────────────────────────────────────────────────────
 ├── soak_harness.py       ← Langzeit-Soak-Tests (5 Szenarien, JSONL-Export)
-├── eval_harness.py       ← 44 Integrations-Testszenarien (MiniWorld)
+├── eval_harness.py       ← 130 szenariobasierte Integrations-/Regressions-Checks (MiniWorld)
 ├── post_fix_harness.py   ← Struktureller Ablations-Harness (5 Mechanismen, Minimality)
+├── acceptance_eval.py    ← 8-dimensionale Abnahmebewertung für Interaktionsqualität
 ├── integration_probe.py  ← φ-Surrogate + phi_degradation_level() Kaskaden-Messung
 ├── _test_f5tts.py        ← F5-TTS Standalone-Test (Sprachklonierung, Referenz-WAV)
 ├── _test_kokoro.py       ← Kokoro-ONNX Standalone-Test (Offline-Preset-Stimme)
@@ -56,6 +71,8 @@ AI/
 ---
 
 ## Hardware & Performance
+
+Die Werte unten sind eine Momentaufnahme der lokalen Entwicklungsmaschine und des aktuellen Skalen-Setups, keine feste Produkt-Spezifikation.
 
 | Parameter | Wert |
 |---|---|
@@ -259,12 +276,56 @@ RSSM-basiertes Weltmodell — lernt Umgebungsdynamik aus Beobachtungen.
 
 ---
 
+## HumanInteractionSuite — 20 Menschlichkeits-Module (`human_interaction_suite.py`)
+
+Das System simuliert menschlich gefärbte Sprache und Präsenz über 20 spezialisierte Module, die in drei Masterprompt-Phasen implementiert wurden. Alle Module werden pro Tick aktualisiert und greifen in den echten Antwortpfad ein — kein Template-Overlay, sondern zustandsabhängige Einflussnahme.
+
+### Phase 1 — Sprache, Gesprächsstil, Antwortdichte (Module 1–5)
+
+| Modul | Klasse | Wirkung |
+|---|---|---|
+| 1 | `PersonalSpeechSignatureEngine` | Satzlänge, Direktheit, wiederkehrende Formulierungen, Humor; entfernt generische Weich-Opener bei hoher Direktheit, fügt Absicherung bei niedriger Direktheit ein |
+| 2 | `SubtextInterpreter` | Erkennt soziale Subtext-Muster (gereizt, unsicher, rückzüglich, Dominanz-Test) und lenkt Antwortpriorität um |
+| 3 | `DisfluencyGenerator` | Filler-Wörter, Selbstkorrektur und Suchpausen nur bei zustandsabhängigen Signalen (Erschöpfung, geringes Vertrauen, Ausdrucksdruck) |
+| 4 | `ContextCompressionSpeaker` | Steuert Antwortdichte: bei bekannten Personen kompakter, bei Unsicherheit oder Konflikt vorsichtiger und ausführlicher |
+| 5 | `ConversationalEnergyModel` | Modelliert Gesprächsenergie (engagiert, knapp, ausgelaugt, offen, gereizt) und beeinflusst Antwortfluss |
+
+### Phase 2 — Gedächtnis, Beziehung, unvollkommene Erinnerung (Module 6–12)
+
+| Modul | Klasse | Wirkung |
+|---|---|---|
+| 6 | `EmotionalMemoryLayer` | Speichert emotionale Spuren pro Person/Thema; negative Altspuren verschieben Antwortfokus und lösen Reparatursignale aus |
+| 7 | `RelationshipTrajectoryEngine` | Phasenverlauf der Beziehung (fremd → bekannt → vertraut → angespannt → repariert); beeinflusst Antwortdichte und Reparaturbereitschaft |
+| 8 | `SharedHistorySynthesizer` | Kleine gemeinsame Haken, die selektiv und nur bei Relevanz in die Antwort einfließen |
+| 9 | `ExpectationTracker` | Modelliert, was die Person jetzt erwartet (Hilfe, Nähe, Klarheit, Reparatur, knappe Antwort) |
+| 10 | `TrustCalibrationModel` | Form, Vorsicht und Gesprächsinitiative skaliert mit dem Vertrauensniveau |
+| 11 | `ImperfectRecallModule` | Precision-Degradation bei Erschöpfung und niedrigem Vertrauen; Erinnerungssprache wirkt rekonstruktiv statt datenbankgenau |
+| 12 | `BiasEngine` | Verzerrungen (Recency, Familiarity, Konsistenzwunsch) — zustandsabhängig, nicht zufällig |
+
+### Phase 3 — Denkmodi, verborgene Motive, Körper, Präsenz (Module 13–20)
+
+| Modul | Klasse | Wirkung |
+|---|---|---|
+| 13 | `MoodDistortionFilter` | Unter Stress: Antwortbreite einengen (`target_parts=1`); unter Freude: Offenheit erhöhen (+1 part) |
+| 14 | `OverthinkingUnderthinkingSwitch` | `overthinking` → min. 2 Teile + HESITATE; `underthinking` → 1 Teil |
+| 15 | `CognitiveFatigueModule` | Linguistisches Budget; bei `< 0.45` harter 1-Teil-Limit, bei `< 0.65` max. 2 Teile |
+| 16 | `HiddenMotivesLayer` | `seek_rest > 0.65` → Reply auf 2 Sätze trimmen; `be_liked > 0.62` → warmer Abschluss |
+| 17 | `ValueConflictEngine` | ≥2 aktive Wert-Konflikte + Reply > 70 Zeichen → `[P350ms]`-Prosodik-Pause zwischen Sätzen |
+| 18 | `IdentityNarrativeDrift` | `hardening` → Enthusiasmen-Opener ersetzen ("Absolut!" → "Ja."); `opening` → formelle Schlüsse entfernen |
+| 19 | `MicrobehaviorController` | `head_tilt_bias > 0` → `_uplan.head_nod = True`; `gaze_micro_variance ≥ 0.40` → `gaze_at_person = False` |
+| 20 | `PresenceSynchronizer` | `timing_mode="slow"` → +350 ms Delay, Speed −0.12; `"eager"` → −120 ms, Speed +0.08; `sync_score` → `_uplan.confidence` |
+
+**Integration:** Alle Module werden in `consciousness.py` (`respond_to()`) in drei Pre-Assembly- und drei Post-Assembly-Blöcken ausgewertet. Module 19–20 beeinflussen direkt das `UtterancePlan`-Objekt in `brain.py`.
+
+---
+
 ## Dialogplanung & Verkörperte Ausgabe
 
 ### UtterancePlan-Durchreichung
 Die Dialogschicht erzeugt vollständige `UtterancePlan`-Objekte mit:
 - `pitch_shift`, `speed_factor`, `emphasis_words` — prosodische Steuerung
 - `head_nod`, `gaze_at_person`, `jaw_sync` — motorische Cues
+- `deliberation_delay_ms`, `confidence` — von `PresenceSynchronizer` (Modul 20) und `MicrobehaviorController` (Modul 19) dynamisch angepasst
 
 Diese werden durchgereicht bis in die Ausgabe:
 - **SpeechOutput**: Backend-spezifische Umsetzung von Prosodie (F5-TTS: Zero-Shot-Sprachklonierung via Referenz-WAV + Speed-Parameter; Kokoro: Pitch via Resampling; pyttsx3: Rate-Modulation + Pausen-Emphasis)
@@ -419,12 +480,14 @@ Alle Plot-Artists werden **einmalig erstellt** und danach nur mit `setData()` ak
 
 ```powershell
 cd "C:\Users\Minex\AI"
-.\.venv\Scripts\python.exe main.py --nocam --nomic   # ohne Kamera/Mikro
-.\.venv\Scripts\python.exe main.py --noweb            # ohne Web-Crawler
-.\.venv\Scripts\python.exe main.py                    # alles aktiv
-.\.venv\Scripts\python.exe main.py --headless         # kein GUI, stdout-Status
-.\.venv\Scripts\python.exe main.py --eval             # 44 Eval-Szenarien starten
-.\.venv\Scripts\python.exe main.py --soak             # Langzeit-Soak-Test
+.\.venv\Scripts\python.exe main.py                            # GUI + Brain
+.\.venv\Scripts\python.exe main.py --headless                 # kein GUI, stdout-Status
+.\.venv\Scripts\python.exe main.py --nocam --nomic --noweb    # sicherer lokaler Smoke-Test
+.\.venv\Scripts\python.exe main.py --eval                     # Eval-Harness (130 Szenarien)
+.\.venv\Scripts\python.exe main.py --soak --soak-ticks 50000  # Langzeit-Soak-Test
+.\.venv\Scripts\python.exe main.py --postfix                  # Post-Fix / Kausal-Validierung
+.\.venv\Scripts\python.exe _test_f5tts.py                     # F5-TTS separat prüfen
+.\.venv\Scripts\python.exe _test_kokoro.py                    # Kokoro separat prüfen
 ```
 
 ## Befehle im GUI
@@ -490,7 +553,7 @@ python acceptance_eval.py --limits  # nur Grenzen/Hardware/Ethik
 4. **Datenakkumulation ohne Kontrolle**: `PersonModel` + `GoalStack` speichern dauerhaft Gesprächsverläufe, Interessen, Konflikte.  Es gibt kein "Vergiss mich komplett"-Interface.
 5. **Reparatur-Eskalation als Stressor**: `clarity="high"` + reactive Initiative können als Bevormundung wahrgenommen werden, wenn die Reparaturursache beim System lag (schlechte ASR, unklare LLM-Formulierungen) und nicht beim Nutzer.
 
-### D. Abnahmestatus (Stand Mai 2026 — nach TTS-Migration)
+### D. Abnahmestatus (Stand Mai 2026 — nach TTS-Migration + 20 Menschlichkeits-Module)
 
 | Kategorie | Status |
 |---|---|

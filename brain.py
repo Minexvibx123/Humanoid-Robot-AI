@@ -4,6 +4,11 @@ brain.py — Central Brain Orchestrator
 Wires all regions together, runs the simulation clock,
 manages structural plasticity, and produces actions.
 
+Also hosts the UtterancePlan post-build block where Modules 19–20
+of HumanInteractionSuite (MicrobehaviorController + PresenceSynchronizer)
+adjust deliberation_delay_ms, speed_factor, head_nod, gaze_at_person,
+and confidence before speech output is dispatched.
+
 Architecture (signal flow):
                                          ┌─────────────┐
   Camera ──► VisualEncoder ──► SensoryV ─►             │
@@ -100,7 +105,10 @@ except Exception:
 # Constants
 # ─────────────────────────────────────────────────────────────
 SIM_DT = 1.0  # ms per simulation tick
-REAL_TICK_MS = 5000  # ms per tick in GUI mode (5 s); set 0 for full-speed headless
+# Optional wall-clock throttle for the main loop.
+# Default is unthrottled because a hard 5 s sleep dominates tick time and
+# completely masks the actual compute cost of the neural stack.
+REAL_TICK_MS = max(0, int(os.environ.get("REAL_TICK_MS", "0")))
 PLASTICITY_INTERVAL = 30  # STDP sweep every 30 ticks (was 3 — caused 356ms/tick)
 AUTO_SAVE_INTERVAL = (
     10_000  # autosave every 10 000 ticks (was 2 000 — saves less often = less overhead)
@@ -1573,6 +1581,9 @@ class Brain:
                         user_text, self, planned_speech_act=_planned_act
                     )
                     if response:
+                        self._consciousness.human_interaction.observe_reply(
+                            response, self._consciousness, self
+                        )
                         # Route through dialogue pipeline → TTS (ToM already queried above)
                         _uplan = self._dialogue_manager.build_utterance(
                             response,
@@ -1604,6 +1615,45 @@ class Brain:
                             _uplan.deliberation_delay_ms = _delay_ms
                         except Exception:
                             pass
+
+                        # ── Modules 19-20: Microbehavior + PresenceSynchronizer ──
+                        # Use HumanInteractionSuite state to adjust UtterancePlan
+                        # motor cues, timing and prosody.  All writes go through
+                        # fields that UtterancePlan already exposes so no new
+                        # infrastructure is needed.
+                        try:
+                            _hi_bp = self._consciousness.human_interaction
+                            _mb = _hi_bp.microbehavior
+                            _pres = _hi_bp.presence
+
+                            # MicrobehaviorController → motor cues on UtterancePlan
+                            # head_tilt_bias: if non-zero → trigger a nod when speaking
+                            if _mb.head_tilt_bias > 0.0:
+                                _uplan.head_nod = True
+                            # gaze_micro_variance: high variance → less fixed gaze
+                            _uplan.gaze_at_person = _mb.gaze_micro_variance < 0.40
+
+                            # PresenceSynchronizer → timing + prosody
+                            if _pres.timing_mode == "slow":
+                                # Fatigue: widen deliberation gap, slow TTS
+                                _uplan.deliberation_delay_ms = min(
+                                    2400,
+                                    _uplan.deliberation_delay_ms + 350,
+                                )
+                                _uplan.speed_factor = max(0.80, _uplan.speed_factor - 0.12)
+                            elif _pres.timing_mode == "eager":
+                                # High energy: trim gap, slightly faster
+                                _uplan.deliberation_delay_ms = max(
+                                    100,
+                                    _uplan.deliberation_delay_ms - 120,
+                                )
+                                _uplan.speed_factor = min(1.15, _uplan.speed_factor + 0.08)
+
+                            # sync_score → overall confidence on the plan
+                            _uplan.confidence = max(0.05, min(1.0, _pres.sync_score))
+                        except Exception:
+                            pass  # presence cues are non-critical
+
                         self._speech_output.speak_utterance(_uplan)
                         self._dialogue_manager.mark_output_delivered(self.tick_count)
                         self._reply_results.appendleft(response)
@@ -1626,6 +1676,7 @@ class Brain:
 
     def _tick(self) -> None:
         t = self.t
+        _mean_act = 0.0
 
         # 1) Read sensors and inject.
         if self._use_camera:
@@ -1789,7 +1840,7 @@ class Brain:
         if self._lap_metabolic_tick >= 3:
             self._lap_metabolic_tick = 0
             _lap_body = self._consciousness.body
-            _act_load = _mean_act  # already computed in 3c below
+            _act_load = _mean_act  # computed earlier in 3b; defaulted at tick start
             # Drain slightly more than the tick-level 3c drain (complementary)
             _lap_drain = _act_load * 0.0008
             _lap_body.energy_reserve = max(
