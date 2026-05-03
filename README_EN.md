@@ -262,7 +262,7 @@ python-dotenv>=1.0.1
 ├── task_executive.py     ← Goal decomposition + skill sequencing
 ├── social_manager.py     ← Conversation management, turn-taking, person modelling
 ├── sim_bridge.py         ← Simulation/real-time bridge (SimulatedBody / RealBody)
-├── robot_controller.py   ← Servo commands; breathing rhythm (sine ±0.5°), `intent_move_to()` 3-phase sequence
+├── robot_controller.py   ← Servo commands; breathing rhythm (sine ±0.5°), `intent_move_to()` 3-phase sequence, `_GESTURE_LIBRARY` (317 poses), `_apply_gesture()`
 ├── robot_serial.py       ← Arduino serial communication layer
 │
 ├── ── Cognition Modules ─────────────────────────────────────────────────
@@ -554,6 +554,7 @@ The system simulates humanly-inflected speech and presence via 20 specialized mo
 | **E** Event identity drift | `identity_arc.py` | `record_event("praised"/"attacked"/"disappointed"/"successful"/"rejected"/"connected")` — nudges dimension values; keyword detection in `respond_to()` |
 | **F** Breathing rhythm | `robot_controller.py` | `GazeDynamics`: sine-based `head_pitch` micro-delta (~4.5 s cycle, ±0.5°) + slow idle yaw drift every ~3 s |
 | **G** Intent before motion | `robot_controller.py`, `brain.py` | `intent_move_to(target, fn)` → 3 phases: gaze→prepare→execute; `tick_intent()` wired into brain loop |
+| **H** 317-gesture library | `robot_controller.py`, `consciousness.py`, `llm_adapter.py` | `_GESTURE_LIBRARY` with 317 named servo poses (9 categories: head, eyes, jaw, both-arms, right-arm, left-arm, emotional, social, communication, posture, reset); `_apply_gesture()` via `apply_action("gesture", {"name": tag}, 0)`; all LLM `[GESTURE:xxx]` tags routed uniformly; system prompt shows full categorised tag list |
 
 ---
 

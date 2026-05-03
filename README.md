@@ -261,7 +261,7 @@ python-dotenv>=1.0.1
 ├── task_executive.py     ← Ziel-Dekomposition + Skill-Sequenzierung
 ├── social_manager.py     ← Gesprächsverwaltung, Turn-Taking, Person-Modelling
 ├── sim_bridge.py         ← Simulations-/Echtzeit-Bridge (SimulatedBody / RealBody)
-├── robot_controller.py   ← Servo-Steuerbefehle; Atem-Rhythmus (Sinus ±0.5°), `intent_move_to()` 3-Phasen-Sequenz
+├── robot_controller.py   ← Servo-Steuerbefehle; Atem-Rhythmus (Sinus ±0.5°), `intent_move_to()` 3-Phasen-Sequenz, `_GESTURE_LIBRARY` (317 Posen), `_apply_gesture()`
 ├── robot_serial.py       ← Arduino-Serielle Kommunikationsschicht
 │
 ├── ── Kognitions-Module ─────────────────────────────────────────────────
@@ -551,6 +551,7 @@ Das System simuliert menschlich gefärbte Sprache und Präsenz über 20 speziali
 | **E** Ereignis-Identity-Drift | `identity_arc.py` | `record_event("praised"/"attacked"/"disappointed"/"successful"/"rejected"/"connected")` — nudgt Dimensions-Werte; Keyword-Detektion in `respond_to()` |
 | **F** Atem-Rhythmus | `robot_controller.py` | `GazeDynamics`: Sinus-basiertes `head_pitch`-Mikro-Delta (~4,5 s Zyklus, ±0,5°) + langsamer Idle-Yaw-Drift alle ~3 s |
 | **G** Intent Before Motion | `robot_controller.py`, `brain.py` | `intent_move_to(target, fn)` → 3 Phasen: Blick→Vorbereitung→Ausführung; `tick_intent()` im Brain-Loop verdrahtet |
+| **H** 317-Gesten-Bibliothek | `robot_controller.py`, `consciousness.py`, `llm_adapter.py` | `_GESTURE_LIBRARY` mit 317 benannten Servo-Posen (9 Kategorien); `_apply_gesture()` via `apply_action("gesture", {"name": tag}, 0)`; alle LLM-Tags `[GESTURE:xxx]` werden einheitlich darüber geroutet; Systemprompt zeigt kategorisierte Vollständigkeitsliste |
 
 ---
 
