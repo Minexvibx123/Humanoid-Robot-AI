@@ -143,6 +143,14 @@ Wenn die Antwort kommt, kann das Projekt denselben Endpoint lokal verwenden.
 - Antworten mit manipulativer Bindungssprache, feindseliger Eskalation oder unzulässiger Übergewissheit werden aktiv verworfen
 - Projekt- und Identitäts-Guidelines aus der Autobiografie werden zusätzlich in den LLM-Kontext übernommen
 
+---
+
+## Eigenen Charakter erstellen & Finetuning
+
+→ **[CHARAKTER_ERSTELLEN.md](CHARAKTER_ERSTELLEN.md)** — Schritt-für-Schritt-Anleitung: Persönlichkeitsdimensionen, Stimme (Kokoro / F5-TTS), LLM-Systemprompt, Trainingsdaten und Validierung.
+
+---
+
 ### 9. Häufige Probleme
 
 #### TTS spricht nicht

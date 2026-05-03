@@ -144,6 +144,14 @@ If that responds correctly, the project can use the same local endpoint.
 - Responses containing manipulative attachment language, hostile escalation, or unjustified certainty are actively rejected
 - Project and identity guidelines from autobiography state are also injected into the LLM context
 
+---
+
+## Creating a Custom Character & Fine-Tuning
+
+→ **[CHARACTER_CREATION.md](CHARACTER_CREATION.md)** — Step-by-step guide: personality dimensions, voice (Kokoro / F5-TTS), LLM system prompt, training data, and validation.
+
+---
+
 ### 9. Common issues
 
 #### TTS does not speak
