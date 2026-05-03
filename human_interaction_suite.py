@@ -40,7 +40,7 @@ from __future__ import annotations
 import re
 from collections import Counter, deque
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Deque, Dict, List, Optional
+from typing import Any, ClassVar, Deque, Dict, List, Optional, Tuple
 
 
 def _tokens(text: str) -> List[str]:
@@ -85,6 +85,29 @@ class PersonalSpeechSignatureEngine:
                 if frag in joined:
                     self.phrase_fragments[frag] += 1
             self.catchphrases = [p for p, _ in self.phrase_fragments.most_common(5)]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "favorite_words": dict(self.favorite_words),
+            "phrase_fragments": dict(self.phrase_fragments),
+            "avg_sentence_len": self.avg_sentence_len,
+            "humor_style": self.humor_style,
+            "directness": self.directness,
+            "slang_level": self.slang_level,
+            "catchphrases": list(self.catchphrases),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "PersonalSpeechSignatureEngine":
+        obj = cls()
+        obj.favorite_words = Counter(d.get("favorite_words", {}))
+        obj.phrase_fragments = Counter(d.get("phrase_fragments", {}))
+        obj.avg_sentence_len = float(d.get("avg_sentence_len", 8.0))
+        obj.humor_style = str(d.get("humor_style", "dry"))
+        obj.directness = float(d.get("directness", 0.5))
+        obj.slang_level = float(d.get("slang_level", 0.2))
+        obj.catchphrases = list(d.get("catchphrases", []))
+        return obj
 
 
 @dataclass
@@ -421,6 +444,8 @@ class HumanInteractionSuite:
     identity_drift: IdentityNarrativeDrift = field(default_factory=IdentityNarrativeDrift)
     microbehavior: MicrobehaviorController = field(default_factory=MicrobehaviorController)
     presence: PresenceSynchronizer = field(default_factory=PresenceSynchronizer)
+    # ── Phase 2 ext: emotional trajectory (hidden state + ask-when-uncertain) ──
+    emotional_trajectory: "Any" = field(default=None)  # EmotionalTrajectoryTracker
     last_user_turn: str = ""
     last_reply: str = ""
 
@@ -430,6 +455,16 @@ class HumanInteractionSuite:
             return None
         pid = sm.primary_interlocutor()
         return sm.person_model(pid) if pid is not None else None
+
+    def _ensure_trajectory_tracker(self) -> Any:
+        """Lazy-init EmotionalTrajectoryTracker to avoid import cycles."""
+        if self.emotional_trajectory is None:
+            try:
+                from emotion import EmotionalTrajectoryTracker
+                self.emotional_trajectory = EmotionalTrajectoryTracker()
+            except Exception:
+                pass
+        return self.emotional_trajectory
 
     def observe_user_turn(self, user_text: str, cs: Any, brain: Any) -> None:
         self.last_user_turn = user_text
@@ -454,6 +489,12 @@ class HumanInteractionSuite:
             _topic_ut = user_text[:60] if user_text else ""
             _tick_ut = getattr(brain, "tick_count", 0)
             self.emotional_memory.record(_tick_ut, _pid_ut, _topic_ut, _dominant, _valence)
+            # Update emotional trajectory tracker with current emotion state
+            _traj = self._ensure_trajectory_tracker()
+            if _traj is not None and hasattr(_em_obj, "state"):
+                _traj.update(_em_obj.state)
+            elif _traj is not None and _em_obj is not None and hasattr(_em_obj, "stress"):
+                _traj.update(_em_obj)
         except Exception:
             pass
 
@@ -531,4 +572,9 @@ class HumanInteractionSuite:
                 "timing_mode": self.presence.timing_mode,
                 "posture_mode": self.presence.posture_mode,
             },
+            "emotional_trajectory": (
+                self.emotional_trajectory.snapshot()
+                if self.emotional_trajectory is not None
+                else {"hidden_state": "neutral", "uncertainty": 0.0, "ask_flag": False, "history": []}
+            ),
         }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Callable, Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -265,6 +265,11 @@ class RobotController:
         self._head_joint_to_code: Dict[str, str] = {
             config.joint_name: code for code, config in self._head_config.items()
         }
+        # ── Intent-before-motion state (G) ───────────────────
+        self._intent_state: str = "none"      # none | gaze | prepare | execute
+        self._intent_target: str = ""         # human-readable target description
+        self._intent_motion_fn: Any = None    # callable() to execute on phase 3
+        self._intent_ticks_remaining: int = 0
 
     def apply_action(self, kind: str, args: Dict, tick: int) -> str:
         handler = getattr(self, f"_apply_{kind}", None)
@@ -282,6 +287,61 @@ class RobotController:
         self._history.append(msg)
         if len(self._history) > 50:
             self._history = self._history[-50:]
+
+    # ── Intent-before-motion (Feature G) ─────────────────────────────────
+
+    def intent_move_to(
+        self,
+        target: str,
+        motion_fn: Callable[[], None],
+        tick: int,
+    ) -> None:
+        """
+        Execute a 3-phase intent sequence before running `motion_fn`.
+
+        Phase 1 (3 ticks) — gaze toward target (look first)
+        Phase 2 (2 ticks) — brief preparatory pause/lean
+        Phase 3 (immediate) — call motion_fn()
+
+        If an intent sequence is already in progress, the new one is
+        queued by overwriting (latest intent wins — one at a time).
+        """
+        self._intent_target = target
+        self._intent_motion_fn = motion_fn
+        self._intent_state = "gaze"
+        self._intent_ticks_remaining = 3
+        # Phase 1: gaze toward target (reuse gaze_at_person logic as approximation)
+        self.gaze_at_person()
+
+    def tick_intent(self, tick: int) -> None:
+        """
+        Advance the intent-before-motion state machine.
+        Call once per robot tick (brain.py).
+        """
+        if self._intent_state == "none" or self._intent_motion_fn is None:
+            return
+
+        self._intent_ticks_remaining -= 1
+
+        if self._intent_state == "gaze":
+            if self._intent_ticks_remaining <= 0:
+                # Transition to prepare phase: slight lean / pause
+                self._intent_state = "prepare"
+                self._intent_ticks_remaining = 2
+                # Small preparatory head tilt (readiness cue)
+                self._set_target("head_pitch", 86.0)
+
+        elif self._intent_state == "prepare":
+            if self._intent_ticks_remaining <= 0:
+                # Phase 3: execute motion
+                self._intent_state = "execute"
+                try:
+                    self._intent_motion_fn()
+                except Exception:
+                    pass
+                self._intent_state = "none"
+                self._intent_motion_fn = None
+                self._intent_target = ""
 
     def _clamp(self, joint_name: str, value: float) -> float:
         head_code = self._head_joint_to_code.get(joint_name)
@@ -886,6 +946,10 @@ class GazeDynamics:
         self._blink_next: int = 0           # tick for next blink
         self._glance_yaw_offset: float = 0.0
         self._last_tick: int = 0
+        # ── Idle-life micro-motions ───────────────────────────
+        self._breath_tick: int = 0          # accumulated ticks for breathing sine
+        self._breath_base_pitch: float = 89.0
+        self._idle_sway_tick: int = 0       # accumulated ticks for idle yaw sway
 
     # ── Public API ────────────────────────────────────────────
 
@@ -923,6 +987,22 @@ class GazeDynamics:
         elif self._state == self.GLANCE:
             if tick >= self._next_switch:
                 self._enter_attend(rc)
+
+        # ── Idle-life: breathing micro-pitch (F) ──────────────
+        # Only during non-blink states; ±0.5° sine wave ~4-5 s cycle
+        if self._state != self.BLINK:
+            import math as _math
+            self._breath_tick += 1
+            _breath_phase = self._breath_tick / (4.5 * self._TICK_HZ)
+            _breath_offset = 0.5 * _math.sin(2 * _math.pi * _breath_phase)
+            _new_pitch = self._breath_base_pitch + _breath_offset
+            rc._set_target("head_pitch", _new_pitch)
+
+            # Idle sway: very slow ±1° yaw drift every ~3 s
+            self._idle_sway_tick += 1
+            if self._idle_sway_tick % (3 * self._TICK_HZ) == 0:
+                _sway_offset = random.uniform(-1.0, 1.0)
+                rc._set_target("head_yaw", 90.0 + _sway_offset)
 
     # ── State transitions ─────────────────────────────────────
 

@@ -321,6 +321,34 @@ class IdentityArc:
         """Track how the system handles errors (avoidance, honesty, repair, defiance)."""
         self._error_patterns[error_type] = self._error_patterns.get(error_type, 0) + 1
 
+    # Event-type → list of (dimension_name, delta) pairs
+    _EVENT_IMPACT: Dict[str, List[tuple]] = {
+        "praised":      [("self_confidence", +0.020), ("social_dominance", +0.010)],
+        "attacked":     [("self_confidence", -0.015), ("analytical_depth",  -0.010)],
+        "disappointed": [("strategic_control", -0.020), ("social_dominance", -0.010)],
+        "successful":   [("self_confidence", +0.015), ("strategic_control", +0.010)],
+        "rejected":     [("analytical_depth",  -0.020), ("social_dominance", -0.015)],
+        "connected":    [("social_dominance", +0.020), ("strategic_control", +0.010)],
+    }
+
+    def record_event(self, event_type: str, intensity: float = 1.0) -> None:
+        """
+        Nudge identity dimensions based on a significant social/emotional event.
+
+        Supported event_type values: praised, attacked, disappointed,
+        successful, rejected, connected.  `intensity` scales the delta
+        (1.0 = full effect, 0.5 = half effect).
+        """
+        impacts = self._EVENT_IMPACT.get(event_type)
+        if not impacts:
+            return
+        scale = max(0.0, min(2.0, float(intensity)))
+        for dim_name, delta in impacts:
+            dim = self.dimensions.get(dim_name)
+            if dim is not None:
+                dim.current = max(0.0, min(1.0, dim.current + delta * scale))
+                dim.evidence_ticks += 1
+
     def observe_step(
         self,
         tick: int,

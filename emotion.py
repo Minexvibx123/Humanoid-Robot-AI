@@ -29,8 +29,9 @@ when no semantic concepts are available (cold-start / silent ticks).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from collections import deque
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Deque, Dict, List, Tuple
 
 if TYPE_CHECKING:
     from brain import Brain
@@ -62,6 +63,26 @@ class EmotionalState:
             "fatigue": self.fatigue,
         }
         return max(d, key=d.get)
+
+    def distribution(self) -> Dict[str, float]:
+        """Normalised probability distribution over all 8 dimensions."""
+        raw = {
+            "joy": self.joy,
+            "stress": self.stress,
+            "curiosity": self.curiosity,
+            "calm": self.calm,
+            "sadness": self.sadness,
+            "anger": self.anger,
+            "surprise": self.surprise,
+            "fatigue": self.fatigue,
+        }
+        total = sum(raw.values()) or 1e-9
+        return {k: v / total for k, v in raw.items()}
+
+    def top3(self) -> List[Tuple[str, float]]:
+        """Top-3 emotions as (name, probability) sorted by probability desc."""
+        dist = self.distribution()
+        return sorted(dist.items(), key=lambda x: x[1], reverse=True)[:3]
 
     def valence(self) -> float:
         """Overall hedonic valence in [-1, +1]."""
@@ -152,6 +173,94 @@ class EmotionalState:
             lines.append(f"  {name:<10} {self._bar(val)} {val:.2f}")
         lines.append(f"  → {self.describe()}")
         return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────
+# EmotionalTrajectoryTracker — hidden state + ask-when-uncertain
+# ─────────────────────────────────────────────────────────────
+
+# Transition rules: (from_dominant, to_dominant) → inferred hidden state
+_TRAJECTORY_STATES: Dict[Tuple[str, str], str] = {
+    ("anger",   "sadness"):  "hurt",
+    ("anger",   "fatigue"):  "withdrawal",
+    ("stress",  "sadness"):  "disappointment",
+    ("stress",  "fatigue"):  "exhaustion",
+    ("sadness", "fatigue"):  "withdrawal",
+    ("joy",     "stress"):   "excitement_anxiety",
+    ("curiosity","stress"):  "uncertain_engagement",
+    ("calm",    "sadness"):  "quiet_grief",
+}
+
+_ASK_TEMPLATES_DE = [
+    "Du klingst gerade ein bisschen anders. Alles in Ordnung?",
+    "Ich bemerke, dass etwas anders ist. Möchtest du darüber reden?",
+    "Wie geht es dir gerade wirklich?",
+]
+_ASK_TEMPLATES_EN = [
+    "You sound a bit off today. Everything okay?",
+    "I notice something feels different. Want to talk about it?",
+    "How are you really doing right now?",
+]
+
+
+@dataclass
+class EmotionalTrajectoryTracker:
+    """
+    Tracks the person's emotional trajectory over recent turns.
+
+    Maintains a short history of dominant emotions per turn and infers
+    hidden emotional states from transitions (e.g. anger→sadness = hurt).
+    Triggers ask-when-uncertain logic when uncertainty is high.
+    """
+
+    _WINDOW: int = 6          # how many recent dominant emotions to keep
+    _UNCERTAINTY_THRESH: float = 0.28   # top-1 prob below this → uncertain
+    _ASK_COOLDOWN: int = 12   # turns before asking again
+
+    history: Deque[str] = field(default_factory=lambda: deque(maxlen=6))
+    hidden_state: str = "neutral"          # current inferred hidden state
+    uncertainty_score: float = 0.0        # how ambiguous the current state is
+    ask_flag: bool = False                 # True when system should ask empathically
+    _turns_since_ask: int = 0
+
+    def update(self, em: "EmotionalState") -> None:
+        """Call once per observed person turn."""
+        self._turns_since_ask += 1
+        dist = em.distribution()
+        top1_prob = max(dist.values())
+        self.uncertainty_score = 1.0 - top1_prob
+
+        dom = em.dominant()
+        self.history.append(dom)
+
+        # Infer hidden state from transition
+        if len(self.history) >= 2:
+            transition = (self.history[-2], self.history[-1])
+            self.hidden_state = _TRAJECTORY_STATES.get(transition, dom)
+        else:
+            self.hidden_state = dom
+
+        # Trigger ask-when-uncertain
+        self.ask_flag = (
+            self.uncertainty_score > self._UNCERTAINTY_THRESH
+            and self._turns_since_ask >= self._ASK_COOLDOWN
+        )
+        if self.ask_flag:
+            self._turns_since_ask = 0
+
+    def ask_phrase(self, lang: str = "de") -> str:
+        """Return an empathic check-in phrase."""
+        import random
+        templates = _ASK_TEMPLATES_DE if lang == "de" else _ASK_TEMPLATES_EN
+        return random.choice(templates)
+
+    def snapshot(self) -> Dict:
+        return {
+            "hidden_state": self.hidden_state,
+            "uncertainty": round(self.uncertainty_score, 3),
+            "ask_flag": self.ask_flag,
+            "history": list(self.history),
+        }
 
 
 # ─────────────────────────────────────────────────────────────

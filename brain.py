@@ -2476,6 +2476,12 @@ class Brain:
         except Exception:
             pass
 
+        # ── Intent-before-motion state machine tick (Feature G) ───────────
+        try:
+            self._robot_controller.tick_intent(self.tick_count)
+        except Exception:
+            pass
+
         # 5.4 — TurnState → consciousness self_model: expose active turn state
         _sm_primary = self._social_manager.primary_interlocutor()
         if _sm_primary is not None:

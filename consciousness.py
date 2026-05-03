@@ -22864,6 +22864,25 @@ class ConsciousnessCore:
         # Budget is reduced when body is fatigued, during sleep, or under
         # high autosave pressure. This decouples language from global rhythm.
         self.human_interaction.observe_user_turn(user_text, self, brain)
+        # ── 0b-identity: Event-based identity drift from user signals ─────
+        try:
+            _ut_lc = (user_text or "").lower()
+            _evt = None
+            # Simple keyword signals — lightweight, no NLP dependency
+            if any(w in _ut_lc for w in ("danke", "super", "toll", "great", "thanks", "amazing", "perfect", "genau", "exactly")):
+                _evt = "praised"
+            elif any(w in _ut_lc for w in ("falsch", "wrong", "idiot", "dumb", "stupid", "nervt", "schlecht", "bad reply")):
+                _evt = "attacked"
+            elif any(w in _ut_lc for w in ("enttäuscht", "disappointed", "schade", "leider", "unfortunate", "expected better")):
+                _evt = "disappointed"
+            elif any(w in _ut_lc for w in ("geschafft", "gelöst", "fixed", "solved", "worked", "funktioniert", "it works")):
+                _evt = "successful"
+            elif any(w in _ut_lc for w in ("ja", "yes", "stimmt", "agreed", "exactly right", "gut", "richtig")):
+                _evt = "connected"
+            if _evt is not None:
+                self.identity_arc.record_event(_evt)
+        except Exception:
+            pass
         _base_budget = processing_ticks
         _energy_factor = max(0.3, self.body.energy_reserve)
         _sleep_penalty = 0.4 if getattr(brain, "sleeping", False) else 1.0
@@ -23546,6 +23565,23 @@ class ConsciousnessCore:
                             _hook_de = "  (Das hast du schon früher erwähnt.)"
                             _hook_en = "  (You've touched on this before.)"
                             response += _hook_de if _lk_rc == "de" else _hook_en
+
+        # ── Ask-when-uncertain (EmotionalTrajectoryTracker) ──────────────
+        # If the tracker signals high emotional uncertainty, prepend a
+        # brief empathic check-in phrase before the main response.
+        try:
+            _traj_cs = getattr(self.human_interaction, "emotional_trajectory", None)
+            if (
+                _traj_cs is not None
+                and getattr(_traj_cs, "ask_flag", False)
+                and response
+                and len(response) < 300           # only on shorter, conversational replies
+            ):
+                _ask_lang = getattr(self.lang, "current", "de")
+                _ask_phrase = _traj_cs.ask_phrase(_ask_lang)
+                response = _ask_phrase + "  " + response
+        except Exception:
+            pass
 
         # ── 5b. Theory of Mind style adaptation ──────────────────────────
         # Adjust response length/style based on ToM recommendation

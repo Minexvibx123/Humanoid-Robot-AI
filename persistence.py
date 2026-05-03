@@ -795,6 +795,14 @@ def save_brain(brain: "Brain", db_path: str = DB_PATH) -> int:
     except Exception as _exc:
         report.record_issue("save:world_state", _exc)
 
+    # ── 39. PersonalSpeechSignatureEngine (HumanInteractionSuite) ────
+    try:
+        _pss = brain._consciousness.human_interaction.personal_speech_signature
+        meta_rows.append(("human_interaction_pss", json.dumps(_pss.to_dict())))
+        report.record_ok("save:human_interaction_pss")
+    except Exception as _exc:
+        report.record_issue("save:human_interaction_pss", _exc)
+
     _last_save_report = report
 
     conn.executemany("INSERT OR REPLACE INTO meta VALUES (?,?)", meta_rows)
@@ -1618,6 +1626,17 @@ def load_brain(brain: "Brain", db_path: str = DB_PATH) -> int:
             try:
                 brain._world_state.from_dict(
                     json.loads(v), current_tick=brain.tick_count
+                )
+            except Exception:
+                pass
+
+        # ── Restore PersonalSpeechSignatureEngine ────────────────────
+        v = _get("human_interaction_pss")
+        if v:
+            try:
+                from human_interaction_suite import PersonalSpeechSignatureEngine as _PSS
+                brain._consciousness.human_interaction.personal_speech_signature = (
+                    _PSS.from_dict(json.loads(v))
                 )
             except Exception:
                 pass
