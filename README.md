@@ -22,7 +22,7 @@ AI/
 ├── dialogue_manager.py   ← UtterancePlan, Turn-Taking-nahe Dialogplanung
 ├── speech_output.py      ← TTS-Pipeline: F5-TTS → Kokoro-ONNX → pyttsx3
 ├── llm_adapter.py        ← LLM-Kontextaufbau, Validierung, Prompting
-├── emotion.py            ← 8D-Emotionsmaschine inkl. RPE (Dopamin-Gating)
+├── emotion.py            ← 8D-Emotionsmaschine inkl. RPE, `distribution()`, `top3()`, `EmotionalTrajectoryTracker`
 ├── neuron.py             ← Leaky-Integrate-and-Fire Neuron
 ├── synapse.py            ← STDP-Synapse mit Hebbian-Plastizität
 ├── regions.py            ← 11 Hirnregionen mit internen Verbindungen
@@ -40,13 +40,13 @@ AI/
 ├── task_executive.py     ← Ziel-Dekomposition + Skill-Sequenzierung
 ├── social_manager.py     ← Gesprächsverwaltung, Turn-Taking, Person-Modelling
 ├── sim_bridge.py         ← Simulations-/Echtzeit-Bridge (SimulatedBody / RealBody)
-├── robot_controller.py   ← Servo-Steuerbefehle für InMoov-Gelenke
+├── robot_controller.py   ← Servo-Steuerbefehle; Atem-Rhythmus (Sinus ±0.5°), `intent_move_to()` 3-Phasen-Sequenz
 ├── robot_serial.py       ← Arduino-Serielle Kommunikationsschicht
 │
 ├── ── Kognitions-Module ─────────────────────────────────────────────────
 ├── causal_graph.py       ← Kausales Weltmodell (Transitionen, best_action_for_goal)
 ├── value_learning.py     ← TD-Wertlernen (ValueModel, build_state_signature)
-├── identity_arc.py       ← Identitätskohärenz-Monitor (consistency_score)
+├── identity_arc.py       ← Identitätskohärenz-Monitor; `record_event()` für ereignisbasierten Identitäts-Drift
 ├── narrative.py          ← Ereignis-Narrativ-Thread (Szenenstruktur)
 ├── theory_of_mind.py     ← Theory of Mind (Absichts-/Strategieinferenz)
 ├── belief_quarantine.py  ← Isolation widersprüchlicher Überzeugungen
@@ -319,6 +319,18 @@ Das System simuliert menschlich gefärbte Sprache und Präsenz über 20 speziali
 
 **Integration:** Alle Module werden in `consciousness.py` (`respond_to()`) in drei Pre-Assembly- und drei Post-Assembly-Blöcken ausgewertet. Module 19–20 beeinflussen direkt das `UtterancePlan`-Objekt in `brain.py`.
 
+### Erweiterungen (Mai 2026 — Gap-Features A–G)
+
+| Feature | Datei(en) | Was wurde ergänzt |
+|---|---|---|
+| **A** PSS-Persistenz | `human_interaction_suite.py`, `persistence.py` | `PersonalSpeechSignatureEngine.to_dict()`/`from_dict()`; SQLite-Section #39 — Sprach-Signatur überlebt Neustart |
+| **B** Emotions-Wahrscheinlichkeit | `emotion.py` | `EmotionalState.distribution()` → normierte 8D-Verteilung; `top3()` → Top-3 als (Name, Wahrscheinlichkeit) |
+| **C** Trajektorien-Tracker | `emotion.py` | `EmotionalTrajectoryTracker` — erkennt Übergänge (`anger→sadness = hurt`); hält `hidden_state`, `ask_flag`, `uncertainty_score` |
+| **D** Ask-when-uncertain | `consciousness.py` | Empathische Check-in-Phrase wird injiziert wenn `ask_flag=True` + Antwort < 300 Zeichen; 12-Turn-Cooldown |
+| **E** Ereignis-Identity-Drift | `identity_arc.py` | `record_event("praised"/"attacked"/"disappointed"/"successful"/"rejected"/"connected")` — nudgt Dimensions-Werte; Keyword-Detektion in `respond_to()` |
+| **F** Atem-Rhythmus | `robot_controller.py` | `GazeDynamics`: Sinus-basiertes `head_pitch`-Mikro-Delta (~4,5 s Zyklus, ±0,5°) + langsamer Idle-Yaw-Drift alle ~3 s |
+| **G** Intent Before Motion | `robot_controller.py`, `brain.py` | `intent_move_to(target, fn)` → 3 Phasen: Blick→Vorbereitung→Ausführung; `tick_intent()` im Brain-Loop verdrahtet |
+
 ---
 
 ## Dialogplanung & Verkörperte Ausgabe
@@ -441,6 +453,16 @@ Das System ist so gebaut, dass Entfernung zentraler Komponenten zu **echtem stru
 - Moduliert STDP-Lernrate: `A_PLUS × max(0.2, 1.0 + max(0,rpe) × 6.0)`
 - Positive Überraschung → starkes LTP (dopaminergisches Gating)
 
+**Wahrscheinlichkeits-APIs (Gap-Feature B):**
+- `EmotionalState.distribution()` → normiertes Dict über alle 8 Dimensionen
+- `EmotionalState.top3()` → `[(name, prob), ...]` — Top-3 sortiert nach Wahrscheinlichkeit
+
+**EmotionalTrajectoryTracker (Gap-Feature C+D):**
+- Verfolgt die Sequenz dominanter Emotionen pro Turn (`deque`, Fenster 6)
+- Inferiert `hidden_state` aus Übergängen: `anger→sadness = hurt`, `stress→fatigue = exhaustion`, `calm→sadness = quiet_grief`, …
+- `uncertainty_score = 1 − top1_prob`; bei `> 0.28` + 12-Turn-Cooldown → `ask_flag = True`
+- `ask_phrase(lang)` liefert empathische Check-in-Formulierung (DE/EN)
+
 ---
 
 ## Schlaf-Wach-Rhythmus (`brain.py`)
@@ -555,7 +577,7 @@ python acceptance_eval.py --limits  # nur Grenzen/Hardware/Ethik
 4. **Datenakkumulation ohne Kontrolle**: `PersonModel` + `GoalStack` speichern dauerhaft Gesprächsverläufe, Interessen, Konflikte.  Es gibt kein "Vergiss mich komplett"-Interface.
 5. **Reparatur-Eskalation als Stressor**: `clarity="high"` + reactive Initiative können als Bevormundung wahrgenommen werden, wenn die Reparaturursache beim System lag (schlechte ASR, unklare LLM-Formulierungen) und nicht beim Nutzer.
 
-### D. Abnahmestatus (Stand Mai 2026 — nach TTS-Migration + 20 Menschlichkeits-Module)
+### D. Abnahmestatus (Stand Mai 2026 — nach TTS-Migration + 20 Menschlichkeits-Module + 7 Gap-Features A–G)
 
 | Kategorie | Status |
 |---|---|
